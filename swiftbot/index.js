@@ -15,17 +15,18 @@ app.use(cors());
 
 // Global logger to see ANY request hitting the server
 app.use((req, res, next) => {
-    console.log(`[HTTP] ${req.method} ${req.url}`);
-    if (Object.keys(req.body).length > 0) {
-        console.log('[DEBUG-RAW-BODY]:', JSON.stringify(req.body, null, 2));
+    const timestamp = new Date().toISOString();
+    console.error(`[CRITICAL-TRACE] ${timestamp} - ${req.method} ${req.url}`);
+    if (req.body && Object.keys(req.body).length > 0) {
+        console.error('[CRITICAL-RAW-BODY]:', JSON.stringify(req.body, null, 2));
     }
     next();
 });
 
-// Heartbeat logger to prove logs are active
+// High-frequency Heartbeat to PROVE logs are working
 setInterval(() => {
-    console.log(`[HEARTBEAT] Server active at ${new Date().toISOString()}`);
-}, 60000); // Log every 1 minute
+    console.error(`[ALIVE-PING] Monitoring active at ${new Date().toISOString()} - Total Mem: ${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB`);
+}, 30000); // Every 30 seconds
 
 const PORT = process.env.PORT || 3000;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'swift_sales_token';
