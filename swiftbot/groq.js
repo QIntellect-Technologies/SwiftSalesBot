@@ -44,7 +44,15 @@ USER_SESSION: ${JSON.stringify({
             }
         });
 
-        return response.data.choices[0].message.content;
+        let content = response.data.choices[0].message.content;
+
+        // Clean leading/trailing quotes and extra whitespace
+        content = content.trim();
+        if (content.startsWith('"') && content.endsWith('"')) {
+            content = content.substring(1, content.length - 1).trim();
+        }
+
+        return content;
     } catch (error) {
         console.error('Error in Groq AI response:', error.response?.data || error.message);
         return "I'm sorry, I'm having trouble connecting to my brain right now. Please try again or contact us directly at 03008607811.";
