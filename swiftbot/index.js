@@ -16,6 +16,10 @@ app.use(cors());
 const PORT = process.env.PORT || 3000;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'swift_sales_token';
 
+app.get('/', (req, res) => {
+    res.send('SwiftBot v3.0 Server is running!');
+});
+
 app.get('/whatsapp/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
