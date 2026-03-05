@@ -52,12 +52,12 @@ USER_SESSION: ${JSON.stringify({
         let content = response.data.choices[0].message.content || "";
         let actions = [];
 
-        // Parse <ACTIONS> block
-        const actionMatch = content.match(/<ACTIONS>(.*?)<\/ACTIONS>/s);
+        // Parse <ACTIONS> block (Case-Insensitive)
+        const actionMatch = content.match(/<(ACTIONS|actions)>(.*?)<\/(ACTIONS|actions)>/s);
         if (actionMatch) {
             try {
-                actions = JSON.parse(actionMatch[1]);
-                content = content.replace(/<ACTIONS>.*?<\/ACTIONS>/s, '').trim();
+                actions = JSON.parse(actionMatch[2].trim());
+                content = content.replace(/<(ACTIONS|actions)>.*?<\/(ACTIONS|actions)>/si, '').trim();
             } catch (e) {
                 console.error('Failed to parse AI actions:', e.message);
             }
@@ -69,6 +69,7 @@ USER_SESSION: ${JSON.stringify({
         if (quoteMatch) content = quoteMatch[1].trim();
         content = content.replace(/^(Body|Text|Response|Assistant):\s*/is, '').trim();
         content = content.replace(/^["']|["']$/g, '').trim();
+        content = content.replace(/<(ACTIONS|actions)>.*?<\/(ACTIONS|actions)>/si, '').trim(); // Second pass to be sure
 
         return { content, actions };
     } catch (error) {
