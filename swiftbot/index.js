@@ -13,6 +13,15 @@ const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 
+// Global logger to see ANY request hitting the server
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    if (Object.keys(req.headers).length > 0) {
+        console.log('Headers:', JSON.stringify(req.headers, null, 2));
+    }
+    next();
+});
+
 const PORT = process.env.PORT || 3000;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'swift_sales_token';
 
