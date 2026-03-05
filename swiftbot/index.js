@@ -166,6 +166,7 @@ app.post('/webhook', async (req, res) => {
                 console.log(`[AI] Response generated (${aiReply.length} chars), Actions: ${actions.length}`);
 
                 // --- PROCESS AI ACTIONS ---
+                let aiSuggestedButtons = [];
                 if (actions && actions.length > 0) {
                     let cart = [...session.cart];
                     actions.forEach(action => {
@@ -183,6 +184,8 @@ app.post('/webhook', async (req, res) => {
                                     subtotal: action.quantity * action.price
                                 });
                             }
+                        } else if (action.type === 'SET_BUTTONS') {
+                            aiSuggestedButtons = action.buttons;
                         }
                     });
                     updateSession(from, { cart });
@@ -192,22 +195,24 @@ app.post('/webhook', async (req, res) => {
                 addToHistory(from, 'assistant', aiReply);
 
                 // --- UI ELEMENTS ---
-                const buttons = [];
-                const lowerReply = aiReply.toLowerCase();
-
-                if (lowerReply.includes('welcome') || lowerReply.includes('what would you like to do')) {
-                    buttons.push({ id: 'btn_products', title: '🛍️ Show Products' });
-                    buttons.push({ id: 'btn_orders', title: '📦 My Orders' });
-                    buttons.push({ id: 'btn_about', title: 'ℹ️ About Us' });
-                } else if (lowerReply.includes('add to cart') || (normalizedText.match(/\d+/) && session.current_step === 'browsing_products')) {
-                    // This part should technically be handled by AI logic, but we can nudge it
-                    buttons.push({ id: 'btn_view_cart', title: '🛒 View Cart' });
-                    buttons.push({ id: 'btn_checkout', title: '💳 Checkout' });
-                    buttons.push({ id: 'btn_categories', title: '📁 Categories' });
-                } else if (lowerReply.includes('cart') || lowerReply.includes('subtotal')) {
-                    buttons.push({ id: 'btn_confirm_order', title: '✅ Place Order' });
-                    buttons.push({ id: 'btn_products', title: '➕ Add More' });
-                    buttons.push({ id: 'btn_cancel', title: '❌ Cancel' });
+                let buttons = [];
+                if (aiSuggestedButtons.length > 0) {
+                    buttons = aiSuggestedButtons.map(b => ({ id: b.id || 'btn_ai', title: b.title }));
+                } else {
+                    const lowerReply = aiReply.toLowerCase();
+                    if (lowerReply.includes('welcome') || lowerReply.includes('what would you like to do')) {
+                        buttons.push({ id: 'btn_products', title: '🛍️ Show Products' });
+                        buttons.push({ id: 'btn_orders', title: '📦 My Orders' });
+                        buttons.push({ id: 'btn_about', title: 'ℹ️ About Us' });
+                    } else if (lowerReply.includes('add to cart') || (normalizedText.match(/\d+/) && session.current_step === 'browsing_products')) {
+                        buttons.push({ id: 'btn_view_cart', title: '🛒 View Cart' });
+                        buttons.push({ id: 'btn_checkout', title: '💳 Checkout' });
+                        buttons.push({ id: 'btn_categories', title: '📁 Categories' });
+                    } else if (lowerReply.includes('cart') || lowerReply.includes('subtotal')) {
+                        buttons.push({ id: 'btn_confirm_order', title: '✅ Place Order' });
+                        buttons.push({ id: 'btn_products', title: '➕ Add More' });
+                        buttons.push({ id: 'btn_cancel', title: '❌ Cancel' });
+                    }
                 }
 
                 // AI sometimes mentions cart but we need to update state if it says "Added to cart"

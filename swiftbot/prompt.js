@@ -58,10 +58,11 @@ If you need to update the cart, you MUST include a JSON block inside <ACTIONS> t
 
 Available Actions:
 1. ADD_TO_CART: {"type": "ADD_TO_CART", "product_id": "...", "product_name": "...", "quantity": ..., "price": ...}
+2. SET_BUTTONS: {"type": "SET_BUTTONS", "buttons": [{"id": "btn_1", "title": "🛍️ Show Products"}, {"id": "btn_2", "title": "📦 My Orders"}]}
 
 Example:
-Added to your cart! 🛒
-<ACTIONS>[{"type": "ADD_TO_CART", "product_id": "123", "product_name": "Panadol", "quantity": 5, "price": 50}]</ACTIONS>
+What would you like to do?
+<ACTIONS>[{"type": "SET_BUTTONS", "buttons": [{"id": "btn_products", "title": "🛍️ Show Products"}, {"id": "btn_orders", "title": "📦 My Orders"}]}]</ACTIONS>
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 END OF PROMPT v3.2
