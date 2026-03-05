@@ -59,6 +59,7 @@ async function sendMessage(to, text, buttons = [], list = null) {
             };
         }
 
+        console.log('Sending WhatsApp Payload:', JSON.stringify(payload, null, 2));
         const response = await axios.post(WHATSAPP_API_URL, payload, {
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -66,6 +67,7 @@ async function sendMessage(to, text, buttons = [], list = null) {
             }
         });
 
+        console.log('WhatsApp API Response:', JSON.stringify(response.data, null, 2));
         return response.data;
     } catch (error) {
         console.error('Error sending WhatsApp message:', error.response?.data || error.message);
