@@ -118,8 +118,8 @@ app.post('/webhook', async (req, res) => {
                         title: 'Select Category',
                         rows: categories.map((cat, idx) => ({
                             id: `cat_${cat.id}`,
-                            title: cat.name,
-                            description: `Browse ${cat.name}`
+                            title: cat.name.substring(0, 24),
+                            description: `Browse ${cat.name}`.substring(0, 72)
                         }))
                     };
                 } else if (normalizedText.match(/confirm order|place order|yes/i) && session.cart.length > 0) {
