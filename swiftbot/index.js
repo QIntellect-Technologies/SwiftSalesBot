@@ -15,12 +15,17 @@ app.use(cors());
 
 // Global logger to see ANY request hitting the server
 app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-    if (Object.keys(req.headers).length > 0) {
-        console.log('Headers:', JSON.stringify(req.headers, null, 2));
+    console.log(`[HTTP] ${req.method} ${req.url}`);
+    if (Object.keys(req.body).length > 0) {
+        console.log('[DEBUG-RAW-BODY]:', JSON.stringify(req.body, null, 2));
     }
     next();
 });
+
+// Heartbeat logger to prove logs are active
+setInterval(() => {
+    console.log(`[HEARTBEAT] Server active at ${new Date().toISOString()}`);
+}, 60000); // Log every 1 minute
 
 const PORT = process.env.PORT || 3000;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'swift_sales_token';
