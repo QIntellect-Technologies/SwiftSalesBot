@@ -33,28 +33,39 @@ app.get('/whatsapp/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
+
+    console.log(`[VERIFY] Mode: ${mode}, Token: ${token}`);
+
     if (mode && token && mode === 'subscribe' && token === VERIFY_TOKEN) {
+        console.log('[VERIFY] Webhook Verified Successfully');
         res.status(200).send(challenge);
     } else {
+        console.warn('[VERIFY] Webhook Verification Failed');
         res.sendStatus(403);
     }
 });
 
+// Refactored to handle processing asynchronously
 app.post('/whatsapp/webhook', async (req, res) => {
-    try {
-        const body = req.body;
-        console.log('Incoming Webhook Body:', JSON.stringify(body, null, 2));
+    const body = req.body;
+    console.log('--- INCOMING WEBHOOK ---');
+    console.log(JSON.stringify(body, null, 2));
 
-        if (body.object === 'whatsapp_business_account') {
+    if (body.object === 'whatsapp_business_account') {
+        // Acknowledge Meta immediately to prevent timeouts
+        res.sendStatus(200);
+
+        try {
             const entry = body.entry[0];
             const changes = entry.changes[0].value;
-            console.log('Webhook Changes:', JSON.stringify(changes, null, 2));
 
             if (changes.messages && changes.messages[0]) {
                 const message = changes.messages[0];
                 const from = message.from;
                 let text = "";
                 let metadata = {};
+
+                console.log(`[MESSAGE] From: ${from}, Type: ${message.type}`);
 
                 if (message.type === 'interactive') {
                     if (message.interactive.type === 'button_reply') {
@@ -68,30 +79,29 @@ app.post('/whatsapp/webhook', async (req, res) => {
                     text = message.text.body;
                 }
 
-                if (!text) return res.sendStatus(200);
+                if (!text) {
+                    console.log('[DEBUG] No text content found in message');
+                    return;
+                }
+
+                console.log(`[PROCESS] User Input: "${text}"`);
 
                 const session = getSession(from);
                 let ragData = { query_type: 'none', retrieved_data: [] };
 
                 // --- STATE MACHINE & RAG LOGIC ---
-
-                // 1. GREETING / MAIN MENU
                 if (text.toLowerCase().match(/^(hi|hello|hey|salam|aoa|start)/)) {
                     updateSession(from, { current_step: 'greeting' });
-                }
-
-                // 2. SHOW PRODUCTS / CATEGORIES
-                else if (text.toLowerCase().includes('show products') || text.toLowerCase().includes('categories')) {
+                } else if (text.toLowerCase().includes('show products') || text.toLowerCase().includes('categories')) {
+                    console.log('[DEBUG] Fetching categories...');
                     const categories = await listCategories();
                     ragData = { query_type: 'category_list', retrieved_data: categories };
                     updateSession(from, { current_step: 'browsing_categories', last_categories: categories });
-                }
-
-                // 3. CATEGORY SELECTION (Numeric or specific)
-                else if (session.current_step === 'browsing_categories' && /^\d+$/.test(text)) {
+                } else if (session.current_step === 'browsing_categories' && /^\d+$/.test(text)) {
                     const index = parseInt(text) - 1;
                     const categories = session.last_categories || (await listCategories());
                     if (categories[index]) {
+                        console.log(`[DEBUG] Category selected: ${categories[index].name}`);
                         const products = await getProductsByCategory(categories[index].name, 1);
                         ragData = { query_type: 'product_list', category: categories[index].name, retrieved_data: products };
                         updateSession(from, {
@@ -101,62 +111,54 @@ app.post('/whatsapp/webhook', async (req, res) => {
                             last_page: 1
                         });
                     }
-                }
-
-                // 4. SEARCH / NATURAL LANGUAGE
-                else {
+                } else {
+                    console.log(`[DEBUG] Searching for: ${text}`);
                     const searchResults = await searchMedicine(text);
                     if (searchResults.length > 0) {
                         ragData = { query_type: 'product_search', retrieved_data: searchResults };
-                        // Don't fix the step here, let AI decide if it's browsing or ordering
                     }
                 }
 
-                // --- AI GENERATION ---
+                console.log('[AI] Generating response...');
                 const aiReply = await generateAIResponse(text, ragData, session);
+                console.log(`[AI] Response generated (${aiReply.length} chars)`);
 
-                // --- SESSION UPDATES ---
                 addToHistory(from, 'user', text);
                 addToHistory(from, 'assistant', aiReply);
 
-                // --- UI ELEMENTS EXTRACTION ---
+                // --- UI ELEMENTS ---
                 const buttons = [];
-                // Smart Button Detection based on AI response content/intent
                 const lowerReply = aiReply.toLowerCase();
 
                 if (lowerReply.includes('show products') || lowerReply.includes('what would you like to do')) {
                     buttons.push({ id: 'btn_products', title: '🛍️ Show Products' });
                     buttons.push({ id: 'btn_orders', title: '📦 My Orders' });
                     buttons.push({ id: 'btn_about', title: 'ℹ️ About Swift Sales' });
-                } else if (lowerReply.includes('select a category')) {
-                    // No buttons for list of >3 categories, prompt for numbers or list message
                 } else if (lowerReply.includes('view my cart') || lowerReply.includes('add to cart')) {
                     buttons.push({ id: 'btn_view_cart', title: '🛒 View My Cart' });
-                    buttons.push({ id: 'btn_categories', title: '🔙 Back to Categories' });
+                    buttons.push({ id: 'btn_categories', title: '🔙 Categories' });
                     buttons.push({ id: 'btn_main', title: '🏠 Main Menu' });
                 } else if (lowerReply.includes('confirm order') || lowerReply.includes('place order')) {
                     buttons.push({ id: 'btn_confirm', title: '✅ Place Order' });
                     buttons.push({ id: 'btn_edit', title: '✏️ Edit Order' });
                     buttons.push({ id: 'btn_cancel', title: '❌ Cancel' });
-                } else if (buttons.length === 0) {
-                    // Default fallback buttons if none specific found
+                } else {
                     buttons.push({ id: 'btn_products_small', title: '🛍️ Products' });
                     buttons.push({ id: 'btn_main_small', title: '🏠 Main Menu' });
                 }
 
-                // --- SEND MESSAGE ---
+                console.log('[SEND] Sending message to WhatsApp...');
                 await sendMessage(from, aiReply, buttons.slice(0, 3));
+                console.log('[DONE] Interaction cycle complete for', from);
             }
-            res.sendStatus(200);
-        } else {
-            res.sendStatus(404);
+        } catch (error) {
+            console.error('[CRITICAL ERROR] in processing loop:', error);
         }
-    } catch (error) {
-        console.error('Webhook Error:', error.message);
-        res.sendStatus(500);
+    } else {
+        res.sendStatus(404);
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`SwiftBot v3.0 running on port ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[SERVER] SwiftBot v3.0 running on 0.0.0.0:${PORT}`);
 });
