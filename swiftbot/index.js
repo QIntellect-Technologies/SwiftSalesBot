@@ -1,4 +1,6 @@
 
+console.error('🚀 >>> SWIFTBOT PROCESS STARTED AT:', new Date().toISOString());
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -32,6 +34,7 @@ const PORT = process.env.PORT || 3000;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'swift_sales_token';
 
 app.get('/', (req, res) => {
+    console.error('[HTTP-HIT] Root URL / visited');
     res.send('SwiftBot v3.0 Server is running!');
 });
 
