@@ -2,7 +2,7 @@
 const axios = require('axios');
 require('dotenv').config();
 
-const WHATSAPP_API_URL = `https://graph.facebook.com/v19.0/${process.env.PHONE_NUMBER_ID}/messages`;
+const WHATSAPP_API_URL = `https://graph.facebook.com/v21.0/${process.env.PHONE_NUMBER_ID}/messages`;
 
 async function sendMessage(to, text, buttons = [], list = null) {
     try {

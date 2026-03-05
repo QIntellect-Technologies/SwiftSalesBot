@@ -131,20 +131,20 @@ app.post('/whatsapp/webhook', async (req, res) => {
                 const lowerReply = aiReply.toLowerCase();
 
                 if (lowerReply.includes('show products') || lowerReply.includes('what would you like to do')) {
-                    buttons.push({ id: 'btn_products', title: '🛍️ Show Products' });
-                    buttons.push({ id: 'btn_orders', title: '📦 My Orders' });
-                    buttons.push({ id: 'btn_about', title: 'ℹ️ About Swift Sales' });
+                    buttons.push({ id: 'btn_products', title: 'Show Products' });
+                    buttons.push({ id: 'btn_orders', title: 'My Orders' });
+                    buttons.push({ id: 'btn_about', title: 'About Us' });
                 } else if (lowerReply.includes('view my cart') || lowerReply.includes('add to cart')) {
-                    buttons.push({ id: 'btn_view_cart', title: '🛒 View My Cart' });
-                    buttons.push({ id: 'btn_categories', title: '🔙 Categories' });
-                    buttons.push({ id: 'btn_main', title: '🏠 Main Menu' });
+                    buttons.push({ id: 'btn_view_cart', title: 'View Cart' });
+                    buttons.push({ id: 'btn_categories', title: 'Categories' });
+                    buttons.push({ id: 'btn_main', title: 'Main Menu' });
                 } else if (lowerReply.includes('confirm order') || lowerReply.includes('place order')) {
-                    buttons.push({ id: 'btn_confirm', title: '✅ Place Order' });
-                    buttons.push({ id: 'btn_edit', title: '✏️ Edit Order' });
-                    buttons.push({ id: 'btn_cancel', title: '❌ Cancel' });
+                    buttons.push({ id: 'btn_confirm', title: 'Place Order' });
+                    buttons.push({ id: 'btn_edit', title: 'Edit Order' });
+                    buttons.push({ id: 'btn_cancel', title: 'Cancel' });
                 } else {
-                    buttons.push({ id: 'btn_products_small', title: '🛍️ Products' });
-                    buttons.push({ id: 'btn_main_small', title: '🏠 Main Menu' });
+                    buttons.push({ id: 'btn_products_small', title: 'Products' });
+                    buttons.push({ id: 'btn_main_small', title: 'Main Menu' });
                 }
 
                 console.log('[SEND] Sending message to WhatsApp...');
