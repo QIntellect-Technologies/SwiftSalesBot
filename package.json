@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "cd swiftbot && npm start"
+    "start": "cd swiftbot && npm start",
+    "postinstall": "cd swiftbot && npm install"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",
