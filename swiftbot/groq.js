@@ -23,17 +23,22 @@ USER_SESSION: ${JSON.stringify({
         }, null, 2)}
 `;
 
+
         const messages = [
-            { role: 'system', content: prompt },
+            {
+                role: 'system',
+                content: prompt + `\n\nCRITICAL: If you need to update the user's cart, include a JSON block at the very end of your response inside <ACTIONS> tags like this:
+                <ACTIONS>[{"type": "ADD_TO_CART", "product_id": "...", "product_name": "...", "quantity": ..., "price": ...}]</ACTIONS>`
+            },
             { role: 'system', content: contextInjection },
-            ...session.history.slice(-10), // Last 10 messages for context
+            ...session.history.slice(-10),
             { role: 'user', content: userMessage }
         ];
 
         const response = await axios.post(GROQ_API_URL, {
             model: 'llama-3.3-70b-versatile',
             messages: messages,
-            temperature: 0.7,
+            temperature: 0.1, // Lower temperature for more consistent action parsing
             max_tokens: 1024,
             top_p: 0.9,
             stream: false
@@ -45,27 +50,33 @@ USER_SESSION: ${JSON.stringify({
         });
 
         let content = response.data.choices[0].message.content || "";
+        let actions = [];
 
-        // Robust cleaning:
-        // 1. Remove common preambles like "Here is the response:" or "I will respond as SwiftBot:"
-        content = content.replace(/^(Here is|I will|Sure|Respond|Response|I'll|As a|I can).*?:/is, '').trim();
-
-        // 2. Remove leading/trailing quotes (even if there is baggage before/after them)
-        const quoteMatch = content.match(/^"(.*)"$/s) || content.match(/^'(.*)'$/s);
-        if (quoteMatch) {
-            content = quoteMatch[1].trim();
+        // Parse <ACTIONS> block
+        const actionMatch = content.match(/<ACTIONS>(.*?)<\/ACTIONS>/s);
+        if (actionMatch) {
+            try {
+                actions = JSON.parse(actionMatch[1]);
+                content = content.replace(/<ACTIONS>.*?<\/ACTIONS>/s, '').trim();
+            } catch (e) {
+                console.error('Failed to parse AI actions:', e.message);
+            }
         }
 
-        // 3. Remove any literal "Body:" or "Text:" prefixes the AI might add
+        // Robust cleaning:
+        content = content.replace(/^(Here is|I will|Sure|Respond|Response|I'll|As a|I can).*?:/is, '').trim();
+        const quoteMatch = content.match(/^"(.*)"$/s) || content.match(/^'(.*)'$/s);
+        if (quoteMatch) content = quoteMatch[1].trim();
         content = content.replace(/^(Body|Text|Response|Assistant):\s*/is, '').trim();
-
-        // 4. Remove leading/trailing quotes JUST IN CASE there are more
         content = content.replace(/^["']|["']$/g, '').trim();
 
-        return content;
+        return { content, actions };
     } catch (error) {
         console.error('Error in Groq AI response:', error.response?.data || error.message);
-        return "I'm sorry, I'm having trouble connecting to my brain right now. Please try again or contact us directly at 03008607811.";
+        return {
+            content: "I'm sorry, I'm having trouble connecting to my central distribution system. Please try again or contact us at 03008607811.",
+            actions: []
+        };
     }
 }
 

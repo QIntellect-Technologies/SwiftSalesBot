@@ -103,4 +103,29 @@ async function searchMedicine(queryText) {
     }
 }
 
-module.exports = { listCategories, getProductsByCategory, searchMedicine };
+
+async function createOrder(orderData) {
+    try {
+        const orderNumber = `SW-${Date.now().toString().slice(-6)}`;
+        const { data, error } = await supabase
+            .from('orders')
+            .insert([{
+                ...orderData,
+                order_number: orderNumber,
+                status: 'pending',
+                mode: 'WhatsApp',
+                payment_method: 'Cash on Delivery',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            }])
+            .select();
+
+        if (error) throw error;
+        return data[0];
+    } catch (error) {
+        console.error('Error creating order:', error.message);
+        return null;
+    }
+}
+
+module.exports = { listCategories, getProductsByCategory, searchMedicine, createOrder };
