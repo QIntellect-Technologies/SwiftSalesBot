@@ -44,13 +44,23 @@ USER_SESSION: ${JSON.stringify({
             }
         });
 
-        let content = response.data.choices[0].message.content;
+        let content = response.data.choices[0].message.content || "";
 
-        // Clean leading/trailing quotes and extra whitespace
-        content = content.trim();
-        if (content.startsWith('"') && content.endsWith('"')) {
-            content = content.substring(1, content.length - 1).trim();
+        // Robust cleaning:
+        // 1. Remove common preambles like "Here is the response:" or "I will respond as SwiftBot:"
+        content = content.replace(/^(Here is|I will|Sure|Respond|Response|I'll|As a|I can).*?:/is, '').trim();
+
+        // 2. Remove leading/trailing quotes (even if there is baggage before/after them)
+        const quoteMatch = content.match(/^"(.*)"$/s) || content.match(/^'(.*)'$/s);
+        if (quoteMatch) {
+            content = quoteMatch[1].trim();
         }
+
+        // 3. Remove any literal "Body:" or "Text:" prefixes the AI might add
+        content = content.replace(/^(Body|Text|Response|Assistant):\s*/is, '').trim();
+
+        // 4. Remove leading/trailing quotes JUST IN CASE there are more
+        content = content.replace(/^["']|["']$/g, '').trim();
 
         return content;
     } catch (error) {

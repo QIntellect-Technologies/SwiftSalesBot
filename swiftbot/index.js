@@ -90,9 +90,12 @@ app.post('/whatsapp/webhook', async (req, res) => {
                 let ragData = { query_type: 'none', retrieved_data: [] };
 
                 // --- STATE MACHINE & RAG LOGIC ---
-                if (text.toLowerCase().match(/^(hi|hello|hey|salam|aoa|start)/)) {
+                const normalizedText = text.toLowerCase().trim();
+
+                if (normalizedText.match(/^(hi|hello|hey|salam|aoa|asalam|start|begin|menu|help|hii|helo)/i)) {
+                    console.log('[PROCESS] Intent: Greeting');
                     updateSession(from, { current_step: 'greeting' });
-                } else if (text.toLowerCase().includes('show products') || text.toLowerCase().includes('categories')) {
+                } else if (normalizedText.includes('show products') || normalizedText.includes('categories') || normalizedText.includes('browse')) {
                     console.log('[DEBUG] Fetching categories...');
                     const categories = await listCategories();
                     ragData = { query_type: 'category_list', retrieved_data: categories };
@@ -142,9 +145,11 @@ app.post('/whatsapp/webhook', async (req, res) => {
                     buttons.push({ id: 'btn_confirm', title: 'Place Order' });
                     buttons.push({ id: 'btn_edit', title: 'Edit Order' });
                     buttons.push({ id: 'btn_cancel', title: 'Cancel' });
-                } else {
-                    buttons.push({ id: 'btn_products_small', title: 'Products' });
-                    buttons.push({ id: 'btn_main_small', title: 'Main Menu' });
+                }
+
+                // Fallback: Ensure at least one button exists for interaction
+                if (buttons.length === 0) {
+                    buttons.push({ id: 'btn_main_fallback', title: 'Main Menu' });
                 }
 
                 console.log('[SEND] Sending message to WhatsApp...');
