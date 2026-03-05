@@ -16,7 +16,7 @@ app.use(cors());
 const PORT = process.env.PORT || 3000;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'swift_sales_token';
 
-app.get('/webhook', (req, res) => {
+app.get('/whatsapp/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
@@ -27,7 +27,7 @@ app.get('/webhook', (req, res) => {
     }
 });
 
-app.post('/webhook', async (req, res) => {
+app.post('/whatsapp/webhook', async (req, res) => {
     try {
         const body = req.body;
         if (body.object === 'whatsapp_business_account') {
