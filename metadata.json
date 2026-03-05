@@ -1,0 +1,7 @@
+{
+  "name": "Swift Sales Panel",
+  "description": "A sophisticated pharmaceutical distribution admin dashboard with glassmorphism design, real-time analytics, and advanced inventory management.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
