@@ -38,7 +38,7 @@ app.get('/', (req, res) => {
     res.send('SwiftBot v3.0 Server is running!');
 });
 
-app.get('/whatsapp/webhook', (req, res) => {
+app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
@@ -55,7 +55,7 @@ app.get('/whatsapp/webhook', (req, res) => {
 });
 
 // Refactored to handle processing asynchronously
-app.post('/whatsapp/webhook', async (req, res) => {
+app.post('/webhook', async (req, res) => {
     const body = req.body;
     console.log('--- INCOMING WEBHOOK ---');
     console.log(JSON.stringify(body, null, 2));
