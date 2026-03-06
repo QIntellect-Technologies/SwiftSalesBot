@@ -209,7 +209,21 @@ app.post('/webhook', async (req, res) => {
                         updateSession(from, { current_step: 'order_placed' });
                     }
                 }
-                // 9. General Search / Intent Detection
+                // 9. About Us Information
+                else if (normalizedText.includes('about us') || metadata.button_id === 'btn_about') {
+                    ragData = {
+                        query_type: 'about_us',
+                        retrieved_data: [{
+                            company: "Swift Sales Medicine Distributor",
+                            location: "Sardar Colony, Rahim Yar Khan",
+                            experience: "20+ Years",
+                            contact: "0300-8607811",
+                            specialty: "Exclusive distributor for Shrooq, Avant, Swiss IQ, Star, and Ospheric Pharma."
+                        }]
+                    };
+                    updateSession(from, { current_step: 'viewing_about' });
+                }
+                // 10. General Search / Intent Detection
                 else {
                     const searchResults = await searchMedicine(text);
                     if (searchResults.length > 0) {
