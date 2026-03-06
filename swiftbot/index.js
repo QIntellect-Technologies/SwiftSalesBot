@@ -237,10 +237,19 @@ app.post('/webhook', async (req, res) => {
                     .replace(/^\d+\.\s+.*$/gm, '') // Remove "1. Item"
                     .replace(/^.* - .* - .*$/gm, '') // Remove "A - B - C" patterns
                     .replace(/(🏭|🛍️|🔍|📦|✅|❌|➕|🔙)\s*.*?(?=($|\n))/g, '') // Remove button titles in text
+                    .replace(/:\s*([^.!?\n]{2,},\s*){2,}[^.!?\n]{2,}(.|$)/g, ':') // Remove comma-separated lists after a colon
                     .replace(/\n{3,}/g, '\n\n')
                     .trim();
 
                 if (cleanReply.length < 10) cleanReply = aiReply;
+
+                // Two-Sentence Rule: If a list/interactive element is present, truncate AI verbosity
+                if (aiSuggestedButtons.length > 0) {
+                    const sentences = cleanReply.match(/[^.!?]+[.!?]+/g) || [cleanReply];
+                    if (sentences.length > 2) {
+                        cleanReply = sentences.slice(0, 2).join(' ').trim();
+                    }
+                }
 
                 // UI Button Logic
                 let buttons = [];
