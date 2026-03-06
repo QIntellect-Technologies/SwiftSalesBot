@@ -82,13 +82,20 @@ async function getCategoriesByCompany(companyName) {
     }
 }
 
-async function getProductsByCompanyAndCategory(companyName, categoryName, page = 1) {
+async function getProductsByCompanyAndCategory(companyName, categoryOrId, page = 1) {
     try {
-        const limit = 5;
+        console.log(`[RAG] Fetching products for Company: ${companyName}, Category/ID: ${categoryOrId}`);
+        const limit = 10; // Increased limit for medicine popup
         const offset = (page - 1) * limit;
 
-        const { data: catData } = await supabase.from('categories').select('id').eq('name', categoryName).single();
-        const categoryId = catData ? catData.id : null;
+        let categoryId = null;
+        if (typeof categoryOrId === 'string' && categoryOrId.length > 20) {
+            // Likely a UUID
+            categoryId = categoryOrId;
+        } else {
+            const { data: catData } = await supabase.from('categories').select('id').eq('name', categoryOrId).single();
+            categoryId = catData ? catData.id : null;
+        }
 
         let query = supabase
             .from('medicines')
@@ -107,6 +114,8 @@ async function getProductsByCompanyAndCategory(companyName, categoryName, page =
 
         const { data, error } = await query;
         if (error) throw error;
+
+        console.log(`[RAG] Found ${data.length} products.`);
 
         return data.filter(med => med.name).map(med => ({
             product_id: med.id,

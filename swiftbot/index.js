@@ -130,10 +130,12 @@ app.post('/webhook', async (req, res) => {
                 // 4. Category Selected (Step 3/4)
                 else if (session.current_step === 'browsing_categories_filtered' && metadata.list_item_id && metadata.list_item_id.startsWith('cat_')) {
                     const catId = metadata.list_item_id.replace('cat_', '');
+                    console.log(`[FLOW] Category selected: ${catId}`);
                     const categories = session.last_categories || (await getCategoriesByCompany(session.selected_company));
                     const selectedCat = categories.find(c => c.id == catId);
                     if (selectedCat) {
-                        const products = await getProductsByCompanyAndCategory(session.selected_company, selectedCat.name, 1);
+                        const products = await getProductsByCompanyAndCategory(session.selected_company, catId, 1);
+                        console.log(`[FLOW] Found ${products.length} products for medicine popup.`);
                         ragData = { query_type: 'product_list', category: selectedCat.name, company: session.selected_company, retrieved_data: products };
                         updateSession(from, {
                             current_step: 'browsing_products',
@@ -254,17 +256,25 @@ app.post('/webhook', async (req, res) => {
                     .replace(/\n{3,}/g, '\n\n')
                     .trim();
 
-                // SMARTER FALLBACK: If cleanup removed everything, don't revert to noisy AI reply if buttons exist
+                // SMARTER FALLBACK: If cleanup removed everything, don't revert to noisy AI reply if buttons/lists exist
                 if (cleanReply.length < 5) {
-                    if (aiSuggestedButtons.length > 0 || responseList) {
-                        cleanReply = "Please select an option from the menu below:";
+                    if (aiSuggestedButtons.length > 0) {
+                        cleanReply = "Please select an option from the buttons below:";
+                    } else if (responseList && responseList.rows && responseList.rows.length > 0) {
+                        cleanReply = `We found ${responseList.rows.length} items. Please select one from the menu below:`;
                     } else {
                         cleanReply = aiReply;
                     }
                 }
 
+                // Final safety: Ensure we don't send an empty list to WhatsApp (API error prevention)
+                let finalResponseList = responseList;
+                if (responseList && (!responseList.rows || responseList.rows.length === 0)) {
+                    finalResponseList = null;
+                }
+
                 // Two-Sentence Rule: If a list/interactive element is present, truncate AI verbosity
-                if (aiSuggestedButtons.length > 0 || responseList) {
+                if (aiSuggestedButtons.length > 0 || finalResponseList) {
                     const sentences = cleanReply.match(/[^.!?]+[.!?]+/g) || [cleanReply];
                     if (sentences.length > 2) {
                         cleanReply = sentences.slice(0, 2).join(' ').trim();
@@ -294,11 +304,11 @@ app.post('/webhook', async (req, res) => {
                     }
                 }
 
-                if (buttons.length === 0 && !responseList) {
+                if (buttons.length === 0 && !finalResponseList) {
                     buttons.push({ id: 'btn_main_menu', title: '🏠 Main Menu' });
                 }
 
-                await sendMessage(from, cleanReply, buttons.slice(0, 3), responseList);
+                await sendMessage(from, cleanReply, buttons.slice(0, 3), finalResponseList);
             }
         } catch (error) {
             console.error('[CRITICAL ERROR]:', error);
