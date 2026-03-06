@@ -84,7 +84,8 @@ app.post('/webhook', async (req, res) => {
                 // --- STATE MACHINE & RAG LOGIC ---
 
                 // 1. Check for Greeting
-                if (normalizedText.match(/^(hi|hello|hey|salam|aoa|asalam|start|menu|help|hii|helo)/i)) {
+                const greetingRegex = /^(hi|hello|hey|salam|aoa|asalam|start|menu|help|hii|helo|hu|hay|hllo)/i;
+                if (normalizedText.match(greetingRegex)) {
                     updateSession(from, { current_step: 'greeting' });
                 }
                 // 2. Company List Request (Step 2)
@@ -230,12 +231,16 @@ app.post('/webhook', async (req, res) => {
                 addToHistory(from, 'user', text);
                 addToHistory(from, 'assistant', aiReply);
 
+                // Final Reply Cleanup (Remove robot-like lists if AI hallucinations occur)
+                let cleanReply = aiReply.replace(/^\d+\.\s+.*$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+                if (cleanReply.length < 5) cleanReply = aiReply;
+
                 // UI Button Logic
                 let buttons = [];
                 if (aiSuggestedButtons.length > 0) {
                     buttons = aiSuggestedButtons.map(b => ({ id: b.id || 'btn_ai', title: b.title }));
                 } else {
-                    const lowerReply = aiReply.toLowerCase();
+                    const lowerReply = cleanReply.toLowerCase();
                     if (lowerReply.includes('welcome') || lowerReply.includes('how can i help you')) {
                         buttons = [{ id: 'btn_products', title: '🛍️ Browse Products' }, { id: 'btn_orders', title: '📦 My Orders' }, { id: 'btn_about', title: 'ℹ️ About Us' }];
                     } else if (lowerReply.includes('which company')) {
@@ -257,7 +262,7 @@ app.post('/webhook', async (req, res) => {
                     buttons.push({ id: 'btn_main_menu', title: '🏠 Main Menu' });
                 }
 
-                await sendMessage(from, aiReply, buttons.slice(0, 3), responseList);
+                await sendMessage(from, cleanReply, buttons.slice(0, 3), responseList);
             }
         } catch (error) {
             console.error('[CRITICAL ERROR]:', error);
