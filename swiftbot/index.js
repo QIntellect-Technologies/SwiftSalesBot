@@ -84,7 +84,7 @@ app.post('/webhook', async (req, res) => {
                 // --- STATE MACHINE & RAG LOGIC ---
 
                 // 1. Check for Greeting
-                const greetingRegex = /^(hi|hello|hey|salam|aoa|asalam|start|menu|help|hii|helo|hu|hay|hllo)/i;
+                const greetingRegex = /^(hi|hello|hey|start|menu|help|hii|helo|hay|hllo)/i;
                 if (normalizedText.match(greetingRegex)) {
                     updateSession(from, { current_step: 'greeting' });
                 }
