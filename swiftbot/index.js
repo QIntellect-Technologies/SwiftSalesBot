@@ -231,9 +231,16 @@ app.post('/webhook', async (req, res) => {
                 addToHistory(from, 'user', text);
                 addToHistory(from, 'assistant', aiReply);
 
-                // Final Reply Cleanup (Remove robot-like lists if AI hallucinations occur)
-                let cleanReply = aiReply.replace(/^\d+\.\s+.*$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
-                if (cleanReply.length < 5) cleanReply = aiReply;
+                // Final Reply Cleanup (Remove robot-like lists and button-like emojis from text)
+                // Removes lines like "1. Item", "AstraZeneca - ... - ...", and button titles like "🏭 List Companies"
+                let cleanReply = aiReply
+                    .replace(/^\d+\.\s+.*$/gm, '') // Remove "1. Item"
+                    .replace(/^.* - .* - .*$/gm, '') // Remove "A - B - C" patterns
+                    .replace(/(🏭|🛍️|🔍|📦|✅|❌|➕|🔙)\s*.*?(?=($|\n))/g, '') // Remove button titles in text
+                    .replace(/\n{3,}/g, '\n\n')
+                    .trim();
+
+                if (cleanReply.length < 10) cleanReply = aiReply;
 
                 // UI Button Logic
                 let buttons = [];
@@ -241,7 +248,7 @@ app.post('/webhook', async (req, res) => {
                     buttons = aiSuggestedButtons.map(b => ({ id: b.id || 'btn_ai', title: b.title }));
                 } else {
                     const lowerReply = cleanReply.toLowerCase();
-                    if (lowerReply.includes('welcome') || lowerReply.includes('how can i help you')) {
+                    if (lowerReply.includes('welcome') || lowerReply.includes('how can i help you') || lowerReply.includes('welcome to swift sales')) {
                         buttons = [{ id: 'btn_products', title: '🛍️ Browse Products' }, { id: 'btn_orders', title: '📦 My Orders' }, { id: 'btn_about', title: 'ℹ️ About Us' }];
                     } else if (lowerReply.includes('which company')) {
                         buttons = [{ id: 'btn_companies', title: '🏭 List Companies' }, { id: 'btn_search', title: '🔍 Search Name' }];
