@@ -37,7 +37,7 @@ Example: <ACTIONS>[{"type": "ADD_TO_CART", "product_id": "...", "product_name": 
         ];
 
         const response = await axios.post(GROQ_API_URL, {
-            model: 'llama-3.3-70b-versatile',
+            model: 'llama-3.1-8b-instant',
             messages: messages,
             temperature: 0.4, // Balanced for medicine names and natural conversation
             max_tokens: 1024,
