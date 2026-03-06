@@ -141,12 +141,25 @@ app.post('/webhook', async (req, res) => {
                             last_products: products,
                             last_page: 1
                         });
+
+                        // SHOW MEDICINE POPUP
+                        responseList = {
+                            header: `${selectedCat.name} Medicines`,
+                            buttonText: 'Medicines',
+                            title: 'Select Medicine',
+                            rows: products.map(prod => ({
+                                id: `prod_${prod.product_id}`,
+                                title: prod.name.substring(0, 24),
+                                description: `${prod.manufacturer} - Rs. ${prod.price_unit}`.substring(0, 72)
+                            }))
+                        };
                     }
                 }
                 // 5. Product Selected (Wait for quantity)
-                else if (session.current_step === 'browsing_products' && /^\d+$/.test(normalizedText)) {
-                    const index = parseInt(normalizedText) - 1;
-                    const product = session.last_products[index];
+                else if (session.current_step === 'browsing_products' && metadata.list_item_id && metadata.list_item_id.startsWith('prod_')) {
+                    const prodId = metadata.list_item_id.replace('prod_', '');
+                    const products = session.last_products || [];
+                    const product = products.find(p => p.product_id == prodId);
                     if (product) {
                         ragData = { query_type: 'product_details', retrieved_data: [product] };
                         updateSession(from, { current_step: 'awaiting_quantity', selected_product: product });
