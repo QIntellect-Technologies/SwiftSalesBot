@@ -27,8 +27,9 @@ USER_SESSION: ${JSON.stringify({
         const messages = [
             {
                 role: 'system',
-                content: prompt + `\n\nCRITICAL: If you need to update the user's cart, include a JSON block at the very end of your response inside <ACTIONS> tags like this:
-                <ACTIONS>[{"type": "ADD_TO_CART", "product_id": "...", "product_name": "...", "quantity": ..., "price": ...}]</ACTIONS>`
+                content: prompt + `\n\nCRITICAL: If the user provides a product name and quantity (e.g., "I want 4 Panadol"), you MUST trigger the ADD_TO_CART action immediately.
+Include a JSON array inside <ACTIONS> tags at the very end of your response.
+Example: <ACTIONS>[{"type": "ADD_TO_CART", "product_id": "...", "product_name": "...", "quantity": 4, "price": ...}]</ACTIONS>`
             },
             { role: 'system', content: contextInjection },
             ...session.history.slice(-10),
@@ -38,7 +39,7 @@ USER_SESSION: ${JSON.stringify({
         const response = await axios.post(GROQ_API_URL, {
             model: 'llama-3.3-70b-versatile',
             messages: messages,
-            temperature: 0.1, // Lower temperature for more consistent action parsing
+            temperature: 0.4, // Balanced for medicine names and natural conversation
             max_tokens: 1024,
             top_p: 0.9,
             stream: false

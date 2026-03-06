@@ -1,4 +1,3 @@
-
 console.error('🚀 >>> SWIFTBOT PROCESS STARTED AT:', new Date().toISOString());
 
 const express = require('express');
@@ -6,7 +5,16 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 require('dotenv').config();
 
-const { listCategories, getProductsByCategory, searchMedicine, createOrder } = require('./rag');
+const {
+    listCategories,
+    getProductsByCategory,
+    searchMedicine,
+    getMedicineById,
+    createOrder,
+    listCompanies,
+    getCategoriesByCompany,
+    getProductsByCompanyAndCategory
+} = require('./rag');
 const { generateAIResponse } = require('./groq');
 const { sendMessage } = require('./whatsapp');
 const { getSession, updateSession, addToHistory, clearCart } = require('./memory');
@@ -15,55 +23,33 @@ const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 
-// Global logger to see ANY request hitting the server
+// Global logger
 app.use((req, res, next) => {
     const timestamp = new Date().toISOString();
     console.error(`[CRITICAL-TRACE] ${timestamp} - ${req.method} ${req.url}`);
-    if (req.body && Object.keys(req.body).length > 0) {
-        console.error('[CRITICAL-RAW-BODY]:', JSON.stringify(req.body, null, 2));
-    }
     next();
 });
-
-// High-frequency Heartbeat to PROVE logs are working
-setInterval(() => {
-    console.error(`[ALIVE-PING] Monitoring active at ${new Date().toISOString()} - Total Mem: ${Math.round(process.memoryUsage().rss / 1024 / 1024)}MB`);
-}, 30000); // Every 30 seconds
 
 const PORT = process.env.PORT || 3000;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'swift_sales_token';
 
-app.get('/', (req, res) => {
-    console.error('[HTTP-HIT] Root URL / visited');
-    res.send('SwiftBot v3.0 Server is running!');
-});
+app.get('/', (req, res) => res.send('SwiftBot v3.1 Server is running!'));
 
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
-
-    console.log(`[VERIFY] Mode: ${mode}, Token: ${token}`);
-
     if (mode && token && mode === 'subscribe' && token === VERIFY_TOKEN) {
-        console.log('[VERIFY] Webhook Verified Successfully');
         res.status(200).send(challenge);
     } else {
-        console.warn('[VERIFY] Webhook Verification Failed');
         res.sendStatus(403);
     }
 });
 
-// Refactored to handle processing asynchronously
 app.post('/webhook', async (req, res) => {
     const body = req.body;
-    console.log('--- INCOMING WEBHOOK ---');
-    console.log(JSON.stringify(body, null, 2));
-
     if (body.object === 'whatsapp_business_account') {
-        // Acknowledge Meta immediately to prevent timeouts
         res.sendStatus(200);
-
         try {
             const entry = body.entry[0];
             const changes = entry.changes[0].value;
@@ -73,8 +59,6 @@ app.post('/webhook', async (req, res) => {
                 const from = message.from;
                 let text = "";
                 let metadata = {};
-
-                console.log(`[MESSAGE] From: ${from}, Type: ${message.type}`);
 
                 if (message.type === 'interactive') {
                     if (message.interactive.type === 'button_reply') {
@@ -88,63 +72,68 @@ app.post('/webhook', async (req, res) => {
                     text = message.text.body;
                 }
 
-                if (!text) {
-                    console.log('[DEBUG] No text content found in message');
-                    return;
-                }
+                if (!text) return;
 
-                console.log(`[PROCESS] User Input: "${text}"`);
+                console.log(`[PROCESS] User Input: "${text}" from ${from}`);
 
                 const session = getSession(from);
                 let ragData = { query_type: 'none', retrieved_data: [] };
-                let responseList = null; // For WhatsApp List Messages
-
-                // --- STATE MACHINE & RAG LOGIC ---
+                let responseList = null;
                 const normalizedText = text.toLowerCase().trim();
 
-                if (normalizedText.match(/^(hi|hello|hey|salam|aoa|asalam|start|begin|menu|help|hii|helo)/i)) {
-                    console.log('[PROCESS] Intent: Greeting');
-                    updateSession(from, { current_step: 'greeting' });
-                } else if (normalizedText.includes('show products') || normalizedText.includes('categories') || normalizedText.includes('browse')) {
-                    console.log('[DEBUG] Fetching categories...');
-                    const categories = await listCategories();
-                    ragData = { query_type: 'category_list', retrieved_data: categories };
-                    updateSession(from, { current_step: 'browsing_categories', last_categories: categories });
+                // --- STATE MACHINE & RAG LOGIC ---
 
-                    // Prepare List Message for categories
+                // 1. Check for Greeting
+                if (normalizedText.match(/^(hi|hello|hey|salam|aoa|asalam|start|menu|help|hii|helo)/i)) {
+                    updateSession(from, { current_step: 'greeting' });
+                }
+                // 2. Company List Request (Step 2)
+                else if (normalizedText.includes('browse products') || normalizedText.includes('list companies') || metadata.button_id === 'btn_products' || metadata.button_id === 'btn_companies') {
+                    const companies = await listCompanies();
+                    ragData = { query_type: 'company_list', retrieved_data: companies };
+                    updateSession(from, { current_step: 'browsing_companies', last_companies: companies });
+
                     responseList = {
-                        header: 'Swift Sales Categories',
+                        header: 'Swift Sales Companies',
+                        buttonText: 'Companies',
+                        title: 'Select Company',
+                        rows: companies.map(comp => ({
+                            id: `comp_${comp.name}`,
+                            title: comp.name.substring(0, 24),
+                            description: `Products by ${comp.name}`.substring(0, 72)
+                        }))
+                    };
+                }
+                // 3. Company Selected (Step 3)
+                else if (session.current_step === 'browsing_companies' && metadata.list_item_id && metadata.list_item_id.startsWith('comp_')) {
+                    const companyName = metadata.list_item_id.replace('comp_', '');
+                    const categories = await getCategoriesByCompany(companyName);
+                    ragData = { query_type: 'category_list_filtered', company: companyName, retrieved_data: categories };
+                    updateSession(from, {
+                        current_step: 'browsing_categories_filtered',
+                        selected_company: companyName,
+                        last_categories: categories
+                    });
+
+                    responseList = {
+                        header: `${companyName} Categories`,
                         buttonText: 'Categories',
                         title: 'Select Category',
-                        rows: categories.map((cat, idx) => ({
+                        rows: categories.map(cat => ({
                             id: `cat_${cat.id}`,
                             title: cat.name.substring(0, 24),
                             description: `Browse ${cat.name}`.substring(0, 72)
                         }))
                     };
-                } else if (normalizedText.match(/confirm order|place order|yes/i) && session.cart.length > 0) {
-                    // PLACE REAL ORDER IN SUPABASE
-                    console.log('[ORDER] Placed order for:', from);
-                    const orderResult = await createOrder({
-                        customer_name: from, // or address if collected
-                        items: session.cart,
-                        total: session.cart_total,
-                        pharmacy_id: '048c8e94-10f2-4dff-ae9d-1eca2a746b46' // Fixed for now or set dynamic
-                    });
-
-                    if (orderResult) {
-                        ragData = { query_type: 'order_success', order_number: orderResult.order_number };
-                        clearCart(from);
-                        updateSession(from, { current_step: 'order_placed' });
-                    }
-                } else if (session.current_step === 'browsing_categories' && metadata.list_item_id) {
+                }
+                // 4. Category Selected (Step 3/4)
+                else if (session.current_step === 'browsing_categories_filtered' && metadata.list_item_id && metadata.list_item_id.startsWith('cat_')) {
                     const catId = metadata.list_item_id.replace('cat_', '');
-                    const categories = session.last_categories || (await listCategories());
+                    const categories = session.last_categories || (await getCategoriesByCompany(session.selected_company));
                     const selectedCat = categories.find(c => c.id == catId);
                     if (selectedCat) {
-                        console.log(`[DEBUG] Category selected: ${selectedCat.name}`);
-                        const products = await getProductsByCategory(selectedCat.name, 1);
-                        ragData = { query_type: 'product_list', category: selectedCat.name, retrieved_data: products };
+                        const products = await getProductsByCompanyAndCategory(session.selected_company, selectedCat.name, 1);
+                        ragData = { query_type: 'product_list', category: selectedCat.name, company: session.selected_company, retrieved_data: products };
                         updateSession(from, {
                             current_step: 'browsing_products',
                             last_category: selectedCat.name,
@@ -152,18 +141,69 @@ app.post('/webhook', async (req, res) => {
                             last_page: 1
                         });
                     }
-                } else {
-                    console.log(`[DEBUG] Searching for: ${text}`);
+                }
+                // 5. Product Selected (Wait for quantity)
+                else if (session.current_step === 'browsing_products' && /^\d+$/.test(normalizedText)) {
+                    const index = parseInt(normalizedText) - 1;
+                    const product = session.last_products[index];
+                    if (product) {
+                        ragData = { query_type: 'product_details', retrieved_data: [product] };
+                        updateSession(from, { current_step: 'awaiting_quantity', selected_product: product });
+                    }
+                }
+                // 6. Quantity Received
+                else if (session.current_step === 'awaiting_quantity' && /^\d+$/.test(normalizedText)) {
+                    const qty = parseInt(normalizedText);
+                    const product = session.selected_product;
+                    if (product && qty > 0) {
+                        const subtotal = qty * product.price_unit;
+                        const newCartItem = {
+                            product_id: product.product_id,
+                            product_name: product.name,
+                            quantity: qty,
+                            unit_price: product.price_unit,
+                            subtotal: subtotal
+                        };
+                        const updatedCart = [...session.cart, newCartItem];
+                        updateSession(from, { cart: updatedCart, current_step: 'cart_updated' });
+                        ragData = { query_type: 'cart_update', retrieved_data: updatedCart };
+                    }
+                }
+                // 7. Address Collection
+                else if (normalizedText.match(/place order|confirm order|checkout/) || metadata.button_id === 'btn_confirm_order') {
+                    if (session.cart.length > 0) {
+                        updateSession(from, { current_step: 'awaiting_address' });
+                    }
+                }
+                // 8. Final Confirmation
+                else if (session.current_step === 'awaiting_address' && normalizedText.length > 5) {
+                    updateSession(from, { current_step: 'confirming_order', delivery_address: text });
+                }
+                else if (metadata.button_id === 'btn_place_order_now') {
+                    const orderResult = await createOrder({
+                        customer_name: from,
+                        items: session.cart,
+                        total_amount: session.cart_total,
+                        delivery_address: session.delivery_address,
+                        pharmacy_id: '048c8e94-10f2-4dff-ae9d-1eca2a746b46'
+                    });
+                    if (orderResult) {
+                        ragData = { query_type: 'order_success', order_number: orderResult.order_number };
+                        clearCart(from);
+                        updateSession(from, { current_step: 'order_placed' });
+                    }
+                }
+                // 9. General Search / Intent Detection
+                else {
                     const searchResults = await searchMedicine(text);
                     if (searchResults.length > 0) {
                         ragData = { query_type: 'product_search', retrieved_data: searchResults };
-                        // AI will parse if we should add to cart
+                        updateSession(from, { last_products: searchResults });
                     }
                 }
 
-                console.log('[AI] Generating response...');
+                // AI Response Generation
                 const { content: aiReply, actions } = await generateAIResponse(text, ragData, session);
-                console.log(`[AI] Response generated (${aiReply.length} chars), Actions: ${actions.length}`);
 
                 // --- PROCESS AI ACTIONS ---
                 let aiSuggestedButtons = [];
@@ -171,21 +211,17 @@ app.post('/webhook', async (req, res) => {
                     let cart = [...session.cart];
                     actions.forEach(action => {
                         if (action.type === 'ADD_TO_CART') {
-                            const existingItemIndex = cart.findIndex(item => item.product_id === action.product_id);
-                            if (existingItemIndex > -1) {
-                                cart[existingItemIndex].quantity += action.quantity;
-                                cart[existingItemIndex].subtotal = cart[existingItemIndex].quantity * cart[existingItemIndex].unit_price;
-                            } else {
-                                cart.push({
-                                    product_id: action.product_id,
-                                    product_name: action.product_name,
-                                    quantity: action.quantity,
-                                    unit_price: action.price,
-                                    subtotal: action.quantity * action.price
-                                });
-                            }
+                            cart.push({
+                                product_id: action.product_id,
+                                product_name: action.product_name,
+                                quantity: action.quantity,
+                                unit_price: action.price,
+                                subtotal: action.quantity * action.price
+                            });
                         } else if (action.type === 'SET_BUTTONS') {
                             aiSuggestedButtons = action.buttons;
+                        } else if (action.type === 'CLEAR_CART') {
+                            cart = [];
                         }
                     });
                     updateSession(from, { cart });
@@ -194,51 +230,41 @@ app.post('/webhook', async (req, res) => {
                 addToHistory(from, 'user', text);
                 addToHistory(from, 'assistant', aiReply);
 
-                // --- UI ELEMENTS ---
+                // UI Button Logic
                 let buttons = [];
                 if (aiSuggestedButtons.length > 0) {
                     buttons = aiSuggestedButtons.map(b => ({ id: b.id || 'btn_ai', title: b.title }));
                 } else {
                     const lowerReply = aiReply.toLowerCase();
-                    if (lowerReply.includes('welcome') || lowerReply.includes('what would you like to do')) {
-                        buttons.push({ id: 'btn_products', title: '🛍️ Show Products' });
-                        buttons.push({ id: 'btn_orders', title: '📦 My Orders' });
-                        buttons.push({ id: 'btn_about', title: 'ℹ️ About Us' });
-                    } else if (lowerReply.includes('add to cart') || (normalizedText.match(/\d+/) && session.current_step === 'browsing_products')) {
-                        buttons.push({ id: 'btn_view_cart', title: '🛒 View Cart' });
-                        buttons.push({ id: 'btn_checkout', title: '💳 Checkout' });
-                        buttons.push({ id: 'btn_categories', title: '📁 Categories' });
-                    } else if (lowerReply.includes('cart') || lowerReply.includes('subtotal')) {
-                        buttons.push({ id: 'btn_confirm_order', title: '✅ Place Order' });
-                        buttons.push({ id: 'btn_products', title: '➕ Add More' });
-                        buttons.push({ id: 'btn_cancel', title: '❌ Cancel' });
+                    if (lowerReply.includes('welcome') || lowerReply.includes('how can i help you')) {
+                        buttons = [{ id: 'btn_products', title: '🛍️ Browse Products' }, { id: 'btn_orders', title: '📦 My Orders' }, { id: 'btn_about', title: 'ℹ️ About Us' }];
+                    } else if (lowerReply.includes('which company')) {
+                        buttons = [{ id: 'btn_companies', title: '🏭 List Companies' }, { id: 'btn_search', title: '🔍 Search Name' }];
+                    } else if (lowerReply.includes('how many units') || lowerReply.includes('how many boxes')) {
+                        buttons = [{ id: 'btn_back', title: '🔙 Back' }];
+                    } else if (lowerReply.includes('added') && lowerReply.includes('order')) {
+                        buttons = [{ id: 'btn_add_more', title: '➕ Add More' }, { id: 'btn_checkout', title: '✅ Place Order' }];
+                    } else if (lowerReply.includes('delivery address')) {
+                        buttons = [{ id: 'btn_view_cart', title: '🛒 Edit Cart' }];
+                    } else if (lowerReply.includes('confirm this order')) {
+                        buttons = [{ id: 'btn_place_order_now', title: '✅ Place Order Now' }, { id: 'btn_edit', title: '✏️ Edit' }];
+                    } else if (lowerReply.includes('successfully placed') || lowerReply.includes('order again')) {
+                        buttons = [{ id: 'btn_reorder', title: '🛍️ Order Again' }, { id: 'btn_track', title: '📦 Track Order' }, { id: 'btn_main', title: '🏠 Main Menu' }];
                     }
                 }
 
-                // AI sometimes mentions cart but we need to update state if it says "Added to cart"
-                if (aiReply.includes('Added to your cart!')) {
-                    // We assume the AI logic in generateAIResponse/groq handles the actual cart array calculation
-                    // But if not, we would need to parse it here. 
-                    // For now, we rely on generateAIResponse to have updated the session object passed to it.
-                }
-
-                // Fallback: Ensure at least one button exists for interaction
                 if (buttons.length === 0 && !responseList) {
-                    buttons.push({ id: 'btn_main_fallback', title: '🏠 Main Menu' });
+                    buttons.push({ id: 'btn_main_menu', title: '🏠 Main Menu' });
                 }
 
-                console.log('[SEND] Sending message to WhatsApp...');
                 await sendMessage(from, aiReply, buttons.slice(0, 3), responseList);
-                console.log('[DONE] Interaction cycle complete for', from);
             }
         } catch (error) {
-            console.error('[CRITICAL ERROR] in processing loop:', error);
+            console.error('[CRITICAL ERROR]:', error);
         }
     } else {
         res.sendStatus(404);
     }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[SERVER] SwiftBot v3.0 running on 0.0.0.0:${PORT}`);
-});
+app.listen(PORT, '0.0.0.0', () => console.log(`[SERVER] SwiftBot v3.1 running on port ${PORT}`));
