@@ -244,20 +244,27 @@ app.post('/webhook', async (req, res) => {
                 addToHistory(from, 'user', text);
                 addToHistory(from, 'assistant', aiReply);
 
-                // Final Reply Cleanup (Remove robot-like lists and button-like emojis from text)
-                // Removes lines like "1. Item", "AstraZeneca - ... - ...", and button titles like "🏭 List Companies"
+                // Final Reply Cleanup (Aggressive pattern removal for text-based lists)
                 let cleanReply = aiReply
                     .replace(/^\d+\.\s+.*$/gm, '') // Remove "1. Item"
                     .replace(/^.* - .* - .*$/gm, '') // Remove "A - B - C" patterns
-                    .replace(/(🏭|🛍️|🔍|📦|✅|❌|➕|🔙)\s*.*?(?=($|\n))/g, '') // Remove button titles in text
+                    .replace(/(🏠|🏭|🛍️|🔍|📦|✅|❌|➕|🔙|ℹ️)\s*.*?(?=($|\n))/g, '') // Remove button titles in text
                     .replace(/:\s*([^.!?\n]{2,},\s*){2,}[^.!?\n]{2,}(.|$)/g, ':') // Remove comma-separated lists after a colon
+                    .replace(/main menu|list companies|browse categories/gi, '') // String-based cleanup
                     .replace(/\n{3,}/g, '\n\n')
                     .trim();
 
-                if (cleanReply.length < 10) cleanReply = aiReply;
+                // SMARTER FALLBACK: If cleanup removed everything, don't revert to noisy AI reply if buttons exist
+                if (cleanReply.length < 5) {
+                    if (aiSuggestedButtons.length > 0 || responseList) {
+                        cleanReply = "Please select an option from the menu below:";
+                    } else {
+                        cleanReply = aiReply;
+                    }
+                }
 
                 // Two-Sentence Rule: If a list/interactive element is present, truncate AI verbosity
-                if (aiSuggestedButtons.length > 0) {
+                if (aiSuggestedButtons.length > 0 || responseList) {
                     const sentences = cleanReply.match(/[^.!?]+[.!?]+/g) || [cleanReply];
                     if (sentences.length > 2) {
                         cleanReply = sentences.slice(0, 2).join(' ').trim();
