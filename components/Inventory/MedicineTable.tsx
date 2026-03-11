@@ -30,9 +30,11 @@ import {
   Square,
   MinusSquare,
   MoreHorizontal,
+  ChevronLeft,
   ChevronRight,
   ShieldCheck,
-  Zap
+  Zap,
+  Upload
 } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis } from 'recharts';
 import { Medicine } from '../../types';
@@ -41,6 +43,7 @@ import { supabase } from '../../lib/supabase';
 
 interface MedicineTableProps {
   initialSearch: string;
+  onUploadClick?: () => void;
 }
 
 const AnimatedCounter = ({ value, prefix = "" }: { value: number, prefix?: string }) => {
@@ -65,7 +68,7 @@ const AnimatedCounter = ({ value, prefix = "" }: { value: number, prefix?: strin
   return <span>{prefix}{count.toLocaleString()}</span>;
 };
 
-const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch }) => {
+const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch, onUploadClick }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   const [selectedStatus, setSelectedStatus] = useState('All Statuses');
@@ -80,6 +83,10 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch }) => {
   const [editingMedicine, setEditingMedicine] = useState<Partial<Medicine> | null>(null);
   const [isAdding, setIsAdding] = useState(false);
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+
   // Bulk Edit State
   const [isBulkEditing, setIsBulkEditing] = useState(false);
   // Fixed type for bulkEditValues to ensure status matches Medicine['status'] union literal types
@@ -88,9 +95,33 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch }) => {
   // --- Supabase Integration ---
   const fetchMedicines = async () => {
     try {
-      const { data, error } = await supabase.from('medicines').select('*').order('created_at', { ascending: false });
-      if (error) throw error;
-      setMedicines(data || []);
+      let allMedicines: Medicine[] = [];
+      let from = 0;
+      let to = 999;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('medicines')
+          .select('*')
+          .order('name', { ascending: true })
+          .range(from, to);
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          allMedicines = [...allMedicines, ...data];
+          if (data.length < 1000) {
+            hasMore = false;
+          } else {
+            from += 1000;
+            to += 1000;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+      setMedicines(allMedicines);
     } catch (error) {
       console.error('Error fetching medicines:', error);
       alert('Failed to load medicines');
@@ -104,6 +135,10 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch }) => {
   useEffect(() => {
     setSearchTerm(initialSearch);
   }, [initialSearch]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedCategory, selectedStatus]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -130,28 +165,47 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch }) => {
         med.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         med.manufacturer?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         med.batchNumber?.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = selectedCategory === 'All Categories' || med.category_name === selectedCategory;
+      const matchesCategory = selectedCategory === 'All Categories' ||
+        (med.generic_name === selectedCategory || med.category_name === selectedCategory || med.category === selectedCategory);
       const matchesStatus = selectedStatus === 'All Statuses' || med.status === selectedStatus;
       return matchesSearch && matchesCategory && matchesStatus;
     });
   }, [medicines, searchTerm, selectedCategory, selectedStatus]);
 
+  // Pagination Logic
+  const totalPages = Math.ceil(filteredMedicines.length / itemsPerPage);
+  const paginatedMedicines = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredMedicines.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredMedicines, currentPage, itemsPerPage]);
+
   const categories = useMemo(() => {
-    const cats = Array.from(new Set(medicines.map(m => m.category_name).filter(Boolean)));
+    const cats = Array.from(new Set(medicines.map(m => m.generic_name || m.category_name || m.category).filter(Boolean)));
     return ['All Categories', ...cats];
   }, [medicines]);
 
   // --- Stats Logic ---
   const stats = useMemo(() => {
-    const totalValue = medicines.reduce((acc, curr) => acc + (Number(curr.price) * curr.stock), 0);
+    const totalValue = Math.round(medicines.reduce((acc, curr) => acc + (Number(curr.price) * curr.stock), 0));
     const lowStockCount = medicines.filter(m => m.status === 'Low Stock' || m.status === 'Out of Stock').length;
+
+    // Normalize names to handle variations and extra spaces
+    const uniqueManufacturers = Array.from(new Set(
+      medicines.map(m => m.manufacturer?.trim().toUpperCase()).filter(Boolean)
+    ));
+
+    const uniqueCategories = Array.from(new Set(
+      medicines.map(m => (m.generic_name || m.category_name || m.category)?.trim().toUpperCase()).filter(Boolean)
+    ));
+
     return {
       total: medicines.length,
-      categories: categories.length - 1,
+      companies: uniqueManufacturers.length,
+      categories: uniqueCategories.length,
       value: totalValue,
       critical: lowStockCount
     };
-  }, [medicines, categories]);
+  }, [medicines]);
 
   // --- Selection Handlers ---
   const toggleSelectAll = () => {
@@ -230,7 +284,6 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch }) => {
           package_size: medData.packageSize,
           batch_number: medData.batchNumber,
           expiry_date: medData.expiryDate,
-          category_name: medData.category || medData.category_name, // Handle legacy
           image_url: medData.imageUrl || `https://picsum.photos/seed/${medData.name}/200/200`
         };
 
@@ -248,7 +301,6 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch }) => {
           package_size: medData.packageSize, // package_size
           batch_number: medData.batchNumber, // batch_number
           expiry_date: medData.expiryDate, // expiry_date
-          category_name: medData.category || medData.category_name,
         };
 
         const { data, error } = await supabase.from('medicines').update(payload).eq('id', medData.id).select().single();
@@ -270,7 +322,7 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch }) => {
     e.preventDefault();
     try {
       const updates: any = {};
-      if (bulkEditValues.category) updates.category_name = bulkEditValues.category;
+      // category_name no longer exists in DB, handle categories properly if needed later.
       if (bulkEditValues.manufacturer) updates.manufacturer = bulkEditValues.manufacturer;
       // status is generated in DB, so we can't update it directly usually, but if we updated stock it would change.
       // The bulk edit UI allows status override? Schema says GENERATED ALWAYS. So we CANNOT update status directly.
@@ -657,10 +709,10 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch }) => {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 flex-1 max-w-4xl">
           {[
-            { label: 'Total Assets', val: stats.total, icon: Layers, color: 'blue' },
-            { label: 'Live Categories', val: stats.categories, icon: Tag, color: 'indigo' },
-            { label: 'Net Valuation', val: stats.value, icon: DollarSign, color: 'emerald', prefix: '$' },
-            { label: 'Critical Alert', val: stats.critical, icon: AlertCircle, color: 'rose' }
+            { label: 'Total Products', val: stats.total, icon: Layers, color: 'blue' },
+            { label: 'Total Companies', val: stats.companies, icon: Factory, color: 'indigo' },
+            { label: 'Total Categories', val: stats.categories, icon: Tag, color: 'amber' },
+            { label: 'Net Valuation', val: stats.value, icon: DollarSign, color: 'emerald', prefix: 'Rs.' }
           ].map((s, i) => (
             <div key={s.label} className="glass p-5 rounded-[28px] border dark:border-white/5 group hover:bg-white transition-all">
               <div className="flex items-center gap-4">
@@ -721,6 +773,12 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch }) => {
           <button onClick={startAdd} className="bg-blue-600 text-white flex items-center gap-3 px-8 py-4 rounded-3xl text-[10px] font-black uppercase tracking-widest shadow-2xl shadow-blue-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all">
             <Plus size={18} /> New Product
           </button>
+
+          {onUploadClick && (
+            <button onClick={onUploadClick} className="bg-emerald-600 text-white flex items-center gap-3 px-8 py-4 rounded-3xl text-[10px] font-black uppercase tracking-widest shadow-2xl shadow-emerald-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all">
+              <Upload size={18} /> Upload CSV
+            </button>
+          )}
         </div>
       </div>
 
@@ -730,7 +788,7 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch }) => {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50/50 dark:bg-slate-800/50 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] border-b border-slate-100 dark:border-white/5">
-                <th className="px-8 py-8 w-10">
+                <th className="px-6 py-8 w-10">
                   <button
                     onClick={toggleSelectAll}
                     className={`p-2 rounded-lg transition-all ${selectedIds.size === filteredMedicines.length && filteredMedicines.length > 0 ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-slate-300 dark:text-slate-700 hover:bg-slate-100 dark:hover:bg-white/5'}`}
@@ -738,21 +796,24 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch }) => {
                     {selectedIds.size === filteredMedicines.length && filteredMedicines.length > 0 ? <CheckSquare size={18} /> : selectedIds.size > 0 ? <MinusSquare size={18} /> : <Square size={18} />}
                   </button>
                 </th>
-                <th className="px-8 py-8">Asset Specifications</th>
-                <th className="px-8 py-8">Classification</th>
-                <th className="px-8 py-8">Stock Metric</th>
-                <th className="px-8 py-8">Unit Value</th>
-                <th className="px-8 py-8">Lifecycle Status</th>
-                <th className="px-8 py-8 text-center">Operational Logic</th>
+                <th className="px-4 py-8">#</th>
+                <th className="px-4 py-8">Product ID</th>
+                <th className="px-6 py-8">Medicine Name</th>
+                <th className="px-4 py-8">Pack Size</th>
+                <th className="px-4 py-8">Category</th>
+                <th className="px-6 py-8">Company</th>
+                <th className="px-4 py-8">Price (Rs.)</th>
+                <th className="px-4 py-8">Stock Status</th>
+                <th className="px-6 py-8 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-              {filteredMedicines.length > 0 ? (
-                filteredMedicines.map((med, idx) => {
+              {paginatedMedicines.length > 0 ? (
+                paginatedMedicines.map((med, idx) => {
                   const isSelected = selectedIds.has(med.id);
                   return (
                     <tr key={med.id} className={`group hover:bg-white/90 dark:hover:bg-white/5 transition-all ${isSelected ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
-                      <td className="px-8 py-6">
+                      <td className="px-6 py-6">
                         <button
                           onClick={() => toggleSelectOne(med.id)}
                           className={`p-2 rounded-lg transition-all ${isSelected ? 'text-blue-600' : 'text-slate-300 dark:text-slate-700 hover:text-slate-400'}`}
@@ -760,38 +821,43 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch }) => {
                           {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
                         </button>
                       </td>
-                      <td className="px-8 py-6">
-                        <div className="flex items-center gap-5">
-                          <div className="w-14 h-14 rounded-2xl overflow-hidden ring-4 ring-slate-100 dark:ring-white/5 shadow-lg group-hover:scale-110 transition-transform">
+                      <td className="px-4 py-6">
+                        <span className="text-xs font-bold text-slate-400">{(currentPage - 1) * itemsPerPage + idx + 1}</span>
+                      </td>
+                      <td className="px-4 py-6">
+                        <span className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase">{med.batchNumber}</span>
+                      </td>
+                      <td className="px-6 py-6">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-xl overflow-hidden ring-2 ring-slate-100 dark:ring-white/5 shadow-sm group-hover:scale-110 transition-transform flex-shrink-0">
                             <img src={med.imageUrl} alt={med.name} className="w-full h-full object-cover" />
                           </div>
-                          <div>
-                            <div className="text-sm font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight group-hover:text-blue-600 transition-colors">{med.name}</div>
-                            <div className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.1em] mt-1">{med.manufacturer} • {med.batchNumber}</div>
-                          </div>
+                          <div className="text-sm font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight group-hover:text-blue-600 transition-colors">{med.name}</div>
                         </div>
                       </td>
-                      <td className="px-8 py-6">
-                        <span className="text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-transparent group-hover:border-blue-500/20 transition-all">{med.category}</span>
+                      <td className="px-4 py-6">
+                        <span className="text-xs font-bold text-slate-600 dark:text-slate-400">{med.packageSize}</span>
                       </td>
-                      <td className="px-8 py-6">
-                        <div className="text-sm font-black text-slate-800 dark:text-white">{med.stock} <span className="text-[10px] text-slate-400 font-bold uppercase">UNITS</span></div>
-                        <div className="text-[9px] text-slate-400 font-bold uppercase mt-1">PKG: {med.packageSize}</div>
+                      <td className="px-4 py-6">
+                        <span className="text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-transparent group-hover:border-blue-500/20 transition-all">{med.generic_name || med.category_name || med.category || 'General'}</span>
                       </td>
-                      <td className="px-8 py-6">
-                        <div className="text-sm font-black text-emerald-500 font-mono">${med.price.toFixed(2)}</div>
+                      <td className="px-6 py-6 font-bold text-xs text-slate-600 dark:text-slate-400 uppercase">
+                        {med.manufacturer}
                       </td>
-                      <td className="px-8 py-6">
+                      <td className="px-4 py-6">
+                        <div className="text-sm font-black text-emerald-500 font-mono">Rs.{med.price.toLocaleString()}</div>
+                      </td>
+                      <td className="px-4 py-6">
                         <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-2xl border text-[9px] font-black uppercase tracking-[0.15em] shadow-sm ${getStatusStyles(med.status)}`}>
                           {getStatusIcon(med.status)}
                           {med.status}
                         </div>
                       </td>
-                      <td className="px-8 py-6">
+                      <td className="px-6 py-6">
                         <div className="flex items-center justify-center gap-2">
-                          <button onClick={() => setViewingMedicine(med)} className="p-3 bg-slate-50 dark:bg-white/5 rounded-2xl text-slate-400 hover:text-blue-600 hover:shadow-lg hover:shadow-blue-500/10 transition-all"><Eye size={18} /></button>
-                          <button onClick={() => startEdit(med)} className="p-3 bg-slate-50 dark:bg-white/5 rounded-2xl text-slate-400 hover:text-amber-500 hover:shadow-lg hover:shadow-amber-500/10 transition-all"><Edit2 size={18} /></button>
-                          <button onClick={() => handleDelete(med.id)} className="p-3 bg-slate-50 dark:bg-white/5 rounded-2xl text-slate-400 hover:text-rose-500 hover:shadow-lg hover:shadow-rose-500/10 transition-all"><Trash2 size={18} /></button>
+                          <button onClick={() => setViewingMedicine(med)} className="p-2.5 bg-slate-50 dark:bg-white/5 rounded-xl text-slate-400 hover:text-blue-600 hover:shadow-lg hover:shadow-blue-500/10 transition-all"><Eye size={16} /></button>
+                          <button onClick={() => startEdit(med)} className="p-2.5 bg-slate-50 dark:bg-white/5 rounded-xl text-slate-400 hover:text-amber-500 hover:shadow-lg hover:shadow-amber-500/10 transition-all"><Edit2 size={16} /></button>
+                          <button onClick={() => handleDelete(med.id)} className="p-2.5 bg-slate-50 dark:bg-white/5 rounded-xl text-slate-400 hover:text-rose-500 hover:shadow-lg hover:shadow-rose-500/10 transition-all"><Trash2 size={16} /></button>
                         </div>
                       </td>
                     </tr>
@@ -810,6 +876,59 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch }) => {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* --- Pagination Controls --- */}
+        <div className="px-8 py-6 border-t border-slate-100 dark:border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50 dark:bg-slate-800/20">
+          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+            Showing <span className="text-slate-700 dark:text-slate-300">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="text-slate-700 dark:text-slate-300">{Math.min(currentPage * itemsPerPage, filteredMedicines.length)}</span> of <span className="text-slate-700 dark:text-slate-300">{filteredMedicines.length}</span> Products
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="p-2 rounded-xl border border-slate-200 dark:border-white/10 text-slate-400 hover:text-blue-500 disabled:opacity-30 disabled:hover:text-slate-400 transition-all bg-white dark:bg-slate-900 shadow-sm"
+              type="button"
+            >
+              <ChevronLeft size={18} />
+            </button>
+
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum = i + 1;
+                if (totalPages > 5) {
+                  if (currentPage > 3) {
+                    pageNum = currentPage - 2 + i;
+                    if (pageNum + (4 - i) > totalPages) {
+                      pageNum = totalPages - 4 + i;
+                    }
+                  }
+                }
+                if (pageNum > totalPages || pageNum < 1) return null;
+
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`w-10 h-10 rounded-xl text-[10px] font-black transition-all ${currentPage === pageNum ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 border border-transparent hover:border-slate-200 dark:hover:border-white/10'}`}
+                    type="button"
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="p-2 rounded-xl border border-slate-200 dark:border-white/10 text-slate-400 hover:text-blue-500 disabled:opacity-30 disabled:hover:text-slate-400 transition-all bg-white dark:bg-slate-900 shadow-sm"
+              type="button"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
         </div>
       </div>
 

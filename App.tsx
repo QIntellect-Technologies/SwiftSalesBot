@@ -49,16 +49,16 @@ const App: React.FC = () => {
     switch (activeView) {
       case DashboardView.OVERVIEW:
         return (
-          <Overview 
-            initialSearch={globalSearch} 
-            darkMode={darkMode} 
+          <Overview
+            initialSearch={globalSearch}
+            darkMode={darkMode}
             filterDate={filterDate}
             startDate={startDate}
             endDate={endDate}
           />
         );
       case DashboardView.INVENTORY:
-        return <MedicineTable initialSearch={globalSearch} />;
+        return <MedicineTable initialSearch={globalSearch} onUploadClick={() => setActiveView(DashboardView.UPLOAD)} />;
       case DashboardView.UPLOAD:
         return <ExcelUpload />;
       case DashboardView.ORDERS:
@@ -103,19 +103,18 @@ const App: React.FC = () => {
 
   return (
     <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'dark bg-slate-950' : 'bg-slate-50'}`}>
-      <Sidebar 
-        activeView={activeView} 
-        setActiveView={setActiveView} 
-        isCollapsed={isSidebarCollapsed} 
-        setIsCollapsed={setIsSidebarCollapsed} 
+      <Sidebar
+        activeView={activeView}
+        setActiveView={setActiveView}
+        isCollapsed={isSidebarCollapsed}
+        setIsCollapsed={setIsSidebarCollapsed}
       />
-      
-      <main className={`transition-all duration-300 pt-20 ${
-        isSidebarCollapsed ? 'pl-20' : 'pl-64'
-      }`}>
-        <Navbar 
-          darkMode={darkMode} 
-          toggleDarkMode={() => setDarkMode(!darkMode)} 
+
+      <main className={`transition-all duration-300 pt-20 ${isSidebarCollapsed ? 'pl-20' : 'pl-64'
+        }`}>
+        <Navbar
+          darkMode={darkMode}
+          toggleDarkMode={() => setDarkMode(!darkMode)}
           isSidebarCollapsed={isSidebarCollapsed}
           searchValue={globalSearch}
           setSearchValue={setGlobalSearch}
@@ -126,7 +125,7 @@ const App: React.FC = () => {
           endDate={endDate}
           setEndDate={setEndDate}
         />
-        
+
         <div className="p-8 max-w-[1600px] mx-auto min-h-[calc(100vh-80px)]">
           {renderContent()}
         </div>
