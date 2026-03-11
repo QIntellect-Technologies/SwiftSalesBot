@@ -60,6 +60,9 @@ async function sendMessage(to, text, buttons = [], list = null) {
         }
 
         console.log('Sending WhatsApp Payload:', JSON.stringify(payload, null, 2));
+        console.error(`[DEBUG] POST to: ${WHATSAPP_API_URL}`);
+        console.error(`[DEBUG] Auth: Bearer ${token.substring(0, 10)}...`);
+
         const response = await axios.post(WHATSAPP_API_URL, payload, {
             headers: {
                 'Authorization': `Bearer ${token}`,

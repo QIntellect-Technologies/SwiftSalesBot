@@ -23,6 +23,17 @@ const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 
+// Environment Validation
+const REQUIRED_ENV = ['WHATSAPP_TOKEN', 'PHONE_NUMBER_ID', 'GROQ_API_KEY'];
+console.error('🔍 Checking Environment Variables...');
+REQUIRED_ENV.forEach(key => {
+    if (!process.env[key]) {
+        console.error(`❌ MISSING ENV: ${key}`);
+    } else {
+        console.error(`✅ FOUND ENV: ${key} (${key === 'WHATSAPP_TOKEN' || key === 'GROQ_API_KEY' ? 'HIDDEN' : process.env[key]})`);
+    }
+});
+
 // Global logger
 app.use((req, res, next) => {
     const timestamp = new Date().toISOString();
@@ -48,6 +59,8 @@ app.get('/webhook', (req, res) => {
 
 app.post('/webhook', async (req, res) => {
     const body = req.body;
+    console.error(`[WEBHOOK] Incoming Request Body: ${JSON.stringify(body, null, 2)}`);
+
     if (body.object === 'whatsapp_business_account') {
         res.sendStatus(200);
         try {
