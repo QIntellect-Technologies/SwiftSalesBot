@@ -45,7 +45,7 @@ async function sendMessage(to, text, buttons = [], list = null) {
                             type: 'reply',
                             reply: {
                                 id: btn.id || `btn_${index}`,
-                                title: btn.title
+                                title: (btn.title || '').substring(0, 20)
                             }
                         }))
                     }
