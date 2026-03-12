@@ -73,7 +73,7 @@ async function sendMessage(to, text, buttons = [], list = null) {
         console.log('WhatsApp API Response:', JSON.stringify(response.data, null, 2));
         return response.data;
     } catch (error) {
-        console.error('Error sending WhatsApp message:', error.response?.data || error.message);
+        console.error('Error sending WhatsApp message:', JSON.stringify(error.response?.data || error.message, null, 2));
         throw error;
     }
 }
