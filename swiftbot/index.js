@@ -63,18 +63,21 @@ app.get('/test-whatsapp', async (req, res) => {
     }
 });
 
-app.get('/webhook', (req, res) => {
+app.get(['/webhook', '/whatsapp/webhook'], (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
+    console.error(`[WEBHOOK-VERIFY] Attempting verification. Mode: ${mode}, Token Match: ${token === VERIFY_TOKEN}`);
     if (mode && token && mode === 'subscribe' && token === VERIFY_TOKEN) {
+        console.error('✅ [WEBHOOK-VERIFY] Webhook verified successfully!');
         res.status(200).send(challenge);
     } else {
+        console.error('❌ [WEBHOOK-VERIFY] Verification failed.');
         res.sendStatus(403);
     }
 });
 
-app.post('/webhook', async (req, res) => {
+app.post(['/webhook', '/whatsapp/webhook'], async (req, res) => {
     const body = req.body;
     console.error(`[WEBHOOK] Incoming Request Body: ${JSON.stringify(body, null, 2)}`);
 
@@ -355,9 +358,11 @@ app.post('/webhook', async (req, res) => {
                 await sendMessage(from, cleanReply, buttons.slice(0, 3), finalResponseList);
             }
         } catch (error) {
-            console.error('[CRITICAL ERROR]:', error);
+            console.error('[CRITICAL ERROR] in post-webhook processing:', error);
+            // Don't send 500 to FB just yet, but log the failure
         }
     } else {
+        console.error('[WEBHOOK] Received non-whatsapp object:', body.object);
         res.sendStatus(404);
     }
 });
