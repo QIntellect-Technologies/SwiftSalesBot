@@ -46,6 +46,23 @@ const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'swift_sales_token';
 
 app.get('/', (req, res) => res.send('SwiftBot v3.1 Server is running!'));
 
+app.get('/test-ping', (req, res) => {
+    console.error('--- PING TEST RECEIVED ---');
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.get('/test-whatsapp', async (req, res) => {
+    console.error('--- WHATSAPP TEST INITIATED ---');
+    const testNumber = req.query.to || '923006782867';
+    try {
+        const result = await sendMessage(testNumber, 'SwiftBot Diagnostic: Outgoing message test successful! ✅');
+        res.json({ success: true, result });
+    } catch (error) {
+        console.error('--- WHATSAPP TEST FAILED ---', error.message);
+        res.status(500).json({ success: false, error: error.message, details: error.response?.data });
+    }
+});
+
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
