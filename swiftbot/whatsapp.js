@@ -2,9 +2,10 @@
 const axios = require('axios');
 require('dotenv').config();
 
-const WHATSAPP_API_URL = `https://graph.facebook.com/v21.0/${process.env.PHONE_NUMBER_ID}/messages`;
+const WHATSAPP_PROVIDER = process.env.WHATSAPP_PROVIDER || 'meta';
 
-async function sendMessage(to, text, buttons = [], list = null) {
+async function sendMetaMessage(to, text, buttons = [], list = null) {
+    const WHATSAPP_API_URL = `https://graph.facebook.com/v21.0/${process.env.PHONE_NUMBER_ID}/messages`;
     try {
         const token = process.env.WHATSAPP_TOKEN;
         if (!token) throw new Error('WHATSAPP_TOKEN is missing');
@@ -28,7 +29,7 @@ async function sendMessage(to, text, buttons = [], list = null) {
                         button: list.buttonText || 'View Options',
                         sections: [{
                             title: list.title || 'Options',
-                            rows: list.rows // [{ id: 'row1', title: 'Row 1', description: 'Desc' }]
+                            rows: list.rows
                         }]
                     }
                 }
@@ -59,10 +60,6 @@ async function sendMessage(to, text, buttons = [], list = null) {
             };
         }
 
-        console.log('Sending WhatsApp Payload:', JSON.stringify(payload, null, 2));
-        console.error(`[DEBUG] POST to: ${WHATSAPP_API_URL}`);
-        console.error(`[DEBUG] Auth: Bearer ${token.substring(0, 10)}...`);
-
         const response = await axios.post(WHATSAPP_API_URL, payload, {
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -70,11 +67,77 @@ async function sendMessage(to, text, buttons = [], list = null) {
             }
         });
 
-        console.log('WhatsApp API Response:', JSON.stringify(response.data, null, 2));
         return response.data;
     } catch (error) {
-        console.error('Error sending WhatsApp message:', JSON.stringify(error.response?.data || error.message, null, 2));
+        console.error('Error sending Meta message:', JSON.stringify(error.response?.data || error.message, null, 2));
         throw error;
+    }
+}
+
+async function sendWatiMessage(to, text, buttons = [], list = null) {
+    const baseUrl = process.env.WATI_API_ENDPOINT;
+    const token = process.env.WATI_API_TOKEN;
+
+    if (!baseUrl || !token) {
+        throw new Error('WATI_API_ENDPOINT or WATI_API_TOKEN is missing');
+    }
+
+    try {
+        let authHeader = token;
+        if (!authHeader.startsWith('Bearer ') && authHeader.length > 50) {
+            authHeader = `Bearer ${authHeader}`;
+        }
+        
+        let endpoint = `${baseUrl}/api/v1/sendSessionMessage/${to}?text=${encodeURIComponent(text)}`;
+        let payload = null;
+        let headers = { 'Authorization': authHeader };
+
+        if (list) {
+            endpoint = `${baseUrl}/api/v1/sendInteractiveListMessage?whatsappNumber=${to}`;
+            payload = {
+                header: list.header || 'Swift Sales',
+                body: text,
+                footer: list.footer || 'Select an option',
+                buttonText: list.buttonText || 'View Options',
+                sections: [{
+                    title: list.title || 'Options',
+                    rows: list.rows.map(row => ({
+                        id: row.id,
+                        title: row.title.substring(0, 24),
+                        description: row.description ? row.description.substring(0, 72) : ''
+                    }))
+                }]
+            };
+        } else if (buttons.length > 0) {
+            endpoint = `${baseUrl}/api/v1/sendInteractiveButtonsMessage?whatsappNumber=${to}`;
+            payload = {
+                header: '',
+                body: text,
+                footer: '',
+                buttons: buttons.map(btn => ({
+                    id: btn.id,
+                    text: btn.title.substring(0, 20)
+                }))
+            };
+        }
+
+        const response = payload 
+            ? await axios.post(endpoint, payload, { headers })
+            : await axios.post(endpoint, {}, { headers });
+
+        console.log('Wati API Response:', JSON.stringify(response.data, null, 2));
+        return response.data;
+    } catch (error) {
+        console.error('Error sending Wati message:', JSON.stringify(error.response?.data || error.message, null, 2));
+        throw error;
+    }
+}
+
+async function sendMessage(to, text, buttons = [], list = null) {
+    if (WHATSAPP_PROVIDER === 'wati') {
+        return sendWatiMessage(to, text, buttons, list);
+    } else {
+        return sendMetaMessage(to, text, buttons, list);
     }
 }
 
