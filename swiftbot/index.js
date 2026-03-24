@@ -351,15 +351,28 @@ async function processIncomingMessage(from, text, metadata = {}) {
             ragData = { query_type: 'cart_update', retrieved_data: updatedCart };
         }
     }
-    // 7. Address Collection
-    else if (normalizedText.match(/place order|confirm order|checkout/) || metadata.button_id === 'btn_confirm_order') {
+    // 7. Address & Contact Collection Flow
+    else if (normalizedText.match(/place order|confirm order|checkout/) || metadata.button_id === 'btn_checkout' || metadata.button_id === 'btn_confirm_order') {
         if (session.cart.length > 0) {
-            updateSession(from, { current_step: 'awaiting_address' });
+            updateSession(from, { current_step: 'awaiting_name' });
+            ragData = { query_type: 'order_flow', step: 'name_request' };
         }
     }
-    // 8. Delivery Address Received
+    // 8. Name Received -> Ask for Phone
+    else if (session.current_step === 'awaiting_name' && normalizedText.length > 2) {
+        updateSession(from, { current_step: 'awaiting_phone', customer_name_real: text });
+        ragData = { query_type: 'order_flow', step: 'phone_request', name: text };
+    }
+    // 9. Phone Received -> Ask for Address
+    else if (session.current_step === 'awaiting_phone' && normalizedText.replace(/\D/g, '').length >= 10) {
+        updateSession(from, { current_step: 'awaiting_address', customer_phone: text });
+        ragData = { query_type: 'order_flow', step: 'address_request', phone: text };
+    }
+    // 10. Address Received -> Final Confirmation
     else if (session.current_step === 'awaiting_address' && normalizedText.length > 5) {
-        updateSession(from, { current_step: 'confirming_order', delivery_address: text });
+        const fullDetails = `${session.customer_name_real}, ${session.customer_phone}, ${text}`;
+        updateSession(from, { current_step: 'confirming_order', delivery_address: fullDetails });
+        ragData = { query_type: 'order_flow', step: 'final_confirmation', details: fullDetails };
     }
     // 8.5 Place Order Final
     else if (metadata.button_id === 'btn_place_order_now') {
