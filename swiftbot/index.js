@@ -119,8 +119,8 @@ app.post(['/webhook', '/whatsapp/webhook'], async (req, res) => {
     }
 });
 
-// Wati Webhook Handler
-app.post('/wati/webhook', async (req, res) => {
+// Wati Webhook Handler (also support root for user convenience)
+app.post(['/', '/wati/webhook'], async (req, res) => {
     const body = req.body;
     console.error(`[WATI-WEBHOOK] Incoming Request Body: ${JSON.stringify(body, null, 2)}`);
     
