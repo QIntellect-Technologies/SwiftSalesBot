@@ -74,9 +74,12 @@ async function sendMetaMessage(to, text, buttons = [], list = null) {
     }
 }
 
-async function sendWatiMessage(to, text, buttons = [], list = null) {
-    const baseUrl = process.env.WATI_API_ENDPOINT;
-    const token = process.env.WATI_API_TOKEN;
+/**
+ * Wati API Implementation
+ */
+async function sendWatiMessage(to, text, buttons = null, list = null) {
+    const baseUrl = WATI_API_ENDPOINT;
+    const token = WATI_API_TOKEN;
 
     if (!baseUrl || !token) {
         throw new Error('WATI_API_ENDPOINT or WATI_API_TOKEN is missing');
@@ -109,7 +112,7 @@ async function sendWatiMessage(to, text, buttons = [], list = null) {
                     }))
                 }]
             };
-        } else if (buttons.length > 0) {
+        } else if (buttons && buttons.length > 0) {
             endpoint = `${baseUrl}/api/v1/sendInteractiveButtonsMessage?whatsappNumber=${to}`;
             payload = {
                 header: '',
@@ -141,9 +144,88 @@ async function sendWatiMessage(to, text, buttons = [], list = null) {
     }
 }
 
-async function sendMessage(to, text, buttons = [], list = null) {
+/**
+ * Whapi API Implementation
+ */
+async function sendWhapiMessage(to, text, buttons = null, list = null) {
+    console.log(`[WHAPI-SEND] Sending to ${to}: "${text.substring(0, 50)}..."`);
+    const token = WHAPI_API_TOKEN;
+    const baseUrl = WHAPI_BASE_URL;
+
+    if (!token) {
+        console.error('WHAPI_API_TOKEN is missing!');
+        return null;
+    }
+
+    try {
+        const headers = {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        };
+
+        let endpoint = `${baseUrl}/messages/text`;
+        let payload = {
+            "to": to,
+            "body": text
+        };
+
+        if (buttons && buttons.length > 0) {
+            endpoint = `${baseUrl}/messages/interactive`;
+            payload = {
+                "to": to,
+                "type": "button",
+                "button": {
+                    "body": text,
+                    "buttons": buttons.map(b => ({
+                        "id": b.id,
+                        "text": b.title
+                    }))
+                }
+            };
+        } else if (list && list.rows && list.rows.length > 0) {
+            endpoint = `${baseUrl}/messages/interactive`;
+            payload = {
+                "to": to,
+                "type": "list",
+                "list": {
+                    "body": text,
+                    "title": list.header || "Options",
+                    "button": list.buttonText || "Choose",
+                    "sections": [{
+                        "title": list.title || "Options",
+                        "rows": list.rows.map(row => ({
+                            "id": row.id,
+                            "title": row.title.substring(0, 24),
+                            "description": row.description ? row.description.substring(0, 72) : ""
+                        }))
+                    }]
+                }
+            };
+        }
+
+        const response = await axios.post(endpoint, payload, { headers });
+        console.log('Whapi API Response:', JSON.stringify(response.data, null, 2));
+        return response.data;
+    } catch (error) {
+        console.error('Error sending Whapi message:', error.message);
+        if (error.response) {
+            console.error('Whapi API Error Response:', JSON.stringify({
+                status: error.response.status,
+                data: error.response.data
+            }, null, 2));
+        }
+        return null;
+    }
+}
+
+/**
+ * Main function to send messages through the selected provider
+ */
+async function sendMessage(to, text, buttons = null, list = null) {
     if (WHATSAPP_PROVIDER === 'wati') {
         return sendWatiMessage(to, text, buttons, list);
+    } else if (WHATSAPP_PROVIDER === 'whapi') {
+        return sendWhapiMessage(to, text, buttons, list);
     } else {
         return sendMetaMessage(to, text, buttons, list);
     }

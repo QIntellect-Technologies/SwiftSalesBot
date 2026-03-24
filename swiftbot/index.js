@@ -162,6 +162,49 @@ app.post(['/', '/wati/webhook'], async (req, res) => {
     }
 });
 
+// Whapi Webhook Handler
+app.post('/whapi/webhook', async (req, res) => {
+    const body = req.body;
+    console.error(`[WHAPI-WEBHOOK] Incoming Request Body: ${JSON.stringify(body, null, 2)}`);
+
+    // Whapi usually sends an array of messages or a single message object
+    const messages = body.messages || [body];
+    
+    res.sendStatus(200);
+
+    for (const msg of messages) {
+        if (!msg.from || msg.from_me) continue; // Skip if no sender or if sent by bot
+
+        try {
+            const from = msg.from.split('@')[0]; // Extract number from ID like "92300...@s.whatsapp.net"
+            let text = "";
+            let metadata = {};
+
+            if (msg.type === 'text') {
+                text = msg.text.body;
+            } else if (msg.type === 'interactive') {
+                if (msg.interactive.type === 'button_reply') {
+                    text = msg.interactive.button_reply.title;
+                    metadata.button_id = msg.interactive.button_reply.id;
+                } else if (msg.interactive.type === 'list_reply') {
+                    text = msg.interactive.list_reply.title;
+                    metadata.list_item_id = msg.interactive.list_reply.id;
+                }
+            } else if (msg.type === 'button') {
+                // Handle legacy button format if applicable
+                text = msg.button.text;
+                metadata.button_id = msg.button.id;
+            }
+
+            if (!text && !metadata.button_id && !metadata.list_item_id) continue;
+            await processIncomingMessage(from, text, metadata);
+
+        } catch (error) {
+            console.error('[CRITICAL ERROR] in Whapi post-webhook processing:', error);
+        }
+    }
+});
+
 // SHARED MESSAGE PROCESSOR
 async function processIncomingMessage(from, text, metadata = {}) {
     console.log(`[PROCESS] User Input: "${text}" from ${from}`);
