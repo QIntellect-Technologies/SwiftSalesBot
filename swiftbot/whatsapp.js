@@ -84,7 +84,8 @@ async function sendWatiMessage(to, text, buttons = [], list = null) {
 
     try {
         let authHeader = token;
-        if (!authHeader.startsWith('Bearer ') && authHeader.length > 50) {
+        // Only add Bearer if it's a JWT (starts with ey...) and doesn't already have it
+        if (!authHeader.startsWith('Bearer ') && authHeader.startsWith('ey')) {
             authHeader = `Bearer ${authHeader}`;
         }
         
