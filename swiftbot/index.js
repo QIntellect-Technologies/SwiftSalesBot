@@ -184,16 +184,35 @@ app.post('/whapi/webhook', async (req, res) => {
                 text = msg.text.body;
             } else if (msg.type === 'interactive') {
                 if (msg.interactive.type === 'button_reply') {
-                    text = msg.interactive.button_reply.title;
+                    text = msg.interactive.button_reply.id;
                     metadata.button_id = msg.interactive.button_reply.id;
                 } else if (msg.interactive.type === 'list_reply') {
-                    text = msg.interactive.list_reply.title;
+                    text = msg.interactive.list_reply.id;
                     metadata.list_item_id = msg.interactive.list_reply.id;
                 }
+            } else if (msg.type === 'reply' && msg.reply) {
+                // Whapi specific button/list reply format
+                if (msg.reply.type === 'buttons_reply' && msg.reply.buttons_reply) {
+                    text = msg.reply.buttons_reply.id;
+                    metadata.button_id = msg.reply.buttons_reply.id;
+                } else if (msg.reply.type === 'list_reply' && msg.reply.list_reply) {
+                    text = msg.reply.list_reply.id;
+                    metadata.list_item_id = msg.reply.list_reply.id;
+                }
             } else if (msg.type === 'button') {
-                // Handle legacy button format if applicable
-                text = msg.button.text;
+                text = msg.button.id;
                 metadata.button_id = msg.button.id;
+            }
+
+            // Strip Whapi prefixes like "ButtonsV3:" or "ListV3:" if present
+            if (text && typeof text === 'string') {
+                text = text.replace(/^(ButtonsV3:|ListV3:)/, '');
+            }
+            if (metadata.button_id && typeof metadata.button_id === 'string') {
+                metadata.button_id = metadata.button_id.replace(/^(ButtonsV3:|ListV3:)/, '');
+            }
+            if (metadata.list_item_id && typeof metadata.list_item_id === 'string') {
+                metadata.list_item_id = metadata.list_item_id.replace(/^(ButtonsV3:|ListV3:)/, '');
             }
 
             if (!text && !metadata.button_id && !metadata.list_item_id) continue;
