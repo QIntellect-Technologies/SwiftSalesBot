@@ -179,42 +179,29 @@ async function sendWhapiMessage(to, text, buttons = null, list = null) {
             endpoint = `${baseUrl}/messages/interactive`;
             payload = {
                 "to": to,
-                "type": "interactive",
-                "interactive": {
-                    "type": "button",
-                    "body": { "text": text },
-                    "action": {
-                        "buttons": buttons.map(b => ({
-                            "type": "reply",
-                            "reply": {
-                                "id": b.id,
-                                "title": b.title
-                            }
-                        }))
-                    }
+                "body": text,
+                "action": {
+                    "buttons": buttons.map(b => ({
+                        "id": b.id,
+                        "text": b.title
+                    }))
                 }
             };
         } else if (list && list.rows && list.rows.length > 0) {
             endpoint = `${baseUrl}/messages/interactive`;
             payload = {
                 "to": to,
-                "type": "interactive",
-                "interactive": {
-                    "type": "list",
-                    "header": list.header ? { "type": "text", "text": list.header } : undefined,
-                    "body": { "text": text },
-                    "footer": list.footer ? { "text": list.footer } : undefined,
-                    "action": {
-                        "button": list.buttonText || "Select",
-                        "sections": [{
-                            "title": list.title || "Options",
-                            "rows": list.rows.map(row => ({
-                                "id": row.id,
-                                "title": row.title.substring(0, 24),
-                                "description": row.description ? row.description.substring(0, 72) : ""
-                            }))
-                        }]
-                    }
+                "body": text,
+                "action": {
+                    "button": list.buttonText || "Select",
+                    "sections": [{
+                        "title": list.title || "Options",
+                        "rows": list.rows.map(row => ({
+                            "id": row.id,
+                            "title": row.title.substring(0, 24),
+                            "description": row.description ? row.description.substring(0, 72) : ""
+                        }))
+                    }]
                 }
             };
         }
