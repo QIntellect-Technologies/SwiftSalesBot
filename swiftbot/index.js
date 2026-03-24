@@ -263,16 +263,21 @@ async function processIncomingMessage(from, text, metadata = {}) {
         ragData = { query_type: 'company_list', retrieved_data: companies };
         updateSession(from, { current_step: 'browsing_companies', last_companies: companies });
 
+        const headerText = "🏪 *SWIFT SALES MEDICINE DISTRIBUTOR*\n*Official Distribution Channel*\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nPlease select a company from the list below to browse their products:";
+
         responseList = {
-            header: 'Swift Sales Companies',
-            buttonText: 'Companies',
-            title: 'Select Company',
+            header: 'Swift Sales',
+            buttonText: 'Select Company',
+            title: 'Available Companies',
             rows: companies.map(comp => ({
                 id: `comp_${comp.name}`,
-                title: comp.name.substring(0, 24),
-                description: `Products by ${comp.name}`.substring(0, 72)
+                title: `🏭 ${comp.name.substring(0, 20)}`,
+                description: `View products from ${comp.name}`.substring(0, 72)
             }))
         };
+        // We override the cleanReply later, but we can set a temp one here if needed
+        // However, index.js uses AI to generate reply unless we skip it.
+        // For now, let's keep the logic where AI generates the text, but we give it the context.
     }
     // 3. Company Selected
     else if (session.current_step === 'browsing_companies' && metadata.list_item_id && metadata.list_item_id.startsWith('comp_')) {
@@ -286,13 +291,13 @@ async function processIncomingMessage(from, text, metadata = {}) {
         });
 
         responseList = {
-            header: `${companyName} Categories`,
-            buttonText: 'Categories',
-            title: 'Select Category',
+            header: `${companyName}`,
+            buttonText: 'Select Category',
+            title: 'Available Categories',
             rows: categories.map(cat => ({
                 id: `cat_${cat.id}`,
-                title: cat.name.substring(0, 24),
-                description: `Browse ${cat.name}`.substring(0, 72)
+                title: `📂 ${cat.name.substring(0, 20)}`,
+                description: `View ${cat.name} medicines`.substring(0, 72)
             }))
         };
     }
@@ -312,13 +317,13 @@ async function processIncomingMessage(from, text, metadata = {}) {
             });
 
             responseList = {
-                header: `${selectedCat.name} Medicines`,
-                buttonText: 'Medicines',
-                title: 'Select Medicine',
+                header: `${selectedCat.name}`,
+                buttonText: 'Select Medicine',
+                title: 'Available Medicines',
                 rows: products.map(prod => ({
                     id: `prod_${prod.product_id}`,
-                    title: prod.name.substring(0, 24),
-                    description: `${prod.manufacturer} - Rs. ${prod.price_unit}`.substring(0, 72)
+                    title: `💊 ${prod.name.substring(0, 20)}`,
+                    description: `${prod.manufacturer} — Rs. ${prod.price_unit}`.substring(0, 72)
                 }))
             };
         }
@@ -451,13 +456,17 @@ async function processIncomingMessage(from, text, metadata = {}) {
         .replace(/\n{3,}/g, '\n\n')
         .trim();
 
-    if (cleanReply.length < 5) {
-        if (aiSuggestedButtons.length > 0) {
+    if (cleanReply.length < 5 || (ragData && ragData.query_type !== 'none')) {
+        if (ragData.query_type === 'company_list') {
+            cleanReply = "🏪 *SWIFT SALES MEDICINE DISTRIBUTOR*\n*Official Distribution Channel*\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nPlease select a company from the list below to browse their products:";
+        } else if (ragData.query_type === 'category_list_filtered') {
+            cleanReply = `📂 *${ragData.company} Categories*\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nExcellent choice! We have the following categories for *${ragData.company}*. Please select one:`;
+        } else if (ragData.query_type === 'product_list') {
+            cleanReply = `💊 *${ragData.company} - ${ragData.category}*\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nWe have these medicines available. Please select the one you'd like to order from the list:`;
+        } else if (aiSuggestedButtons.length > 0) {
             cleanReply = "Please select an option from the buttons below:";
         } else if (responseList && responseList.rows && responseList.rows.length > 0) {
             cleanReply = `We found ${responseList.rows.length} items. Please select one from the menu below:`;
-        } else {
-            cleanReply = aiReply;
         }
     }
 
