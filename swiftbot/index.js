@@ -24,7 +24,7 @@ app.use(bodyParser.json());
 app.use(cors());
 
 // Environment Validation
-const REQUIRED_ENV = ['WHATSAPP_TOKEN', 'PHONE_NUMBER_ID', 'GROQ_API_KEY'];
+const REQUIRED_ENV = ['WHATSAPP_PROVIDER', 'WATI_API_ENDPOINT', 'WATI_API_TOKEN', 'GROQ_API_KEY'];
 console.error('🔍 Checking Environment Variables...');
 REQUIRED_ENV.forEach(key => {
     if (!process.env[key]) {
