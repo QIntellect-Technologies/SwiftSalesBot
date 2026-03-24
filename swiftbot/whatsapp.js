@@ -179,13 +179,17 @@ async function sendWhapiMessage(to, text, buttons = null, list = null) {
             endpoint = `${baseUrl}/messages/interactive`;
             payload = {
                 "to": to,
-                "type": "button",
-                "button": {
-                    "body": text,
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": { "text": text },
                     "action": {
                         "buttons": buttons.map(b => ({
-                            "id": b.id,
-                            "text": b.title
+                            "type": "reply",
+                            "reply": {
+                                "id": b.id,
+                                "title": b.title
+                            }
                         }))
                     }
                 }
@@ -194,12 +198,14 @@ async function sendWhapiMessage(to, text, buttons = null, list = null) {
             endpoint = `${baseUrl}/messages/interactive`;
             payload = {
                 "to": to,
-                "type": "list",
-                "list": {
-                    "body": text,
+                "type": "interactive",
+                "interactive": {
+                    "type": "list",
                     "header": list.header ? { "type": "text", "text": list.header } : undefined,
+                    "body": { "text": text },
+                    "footer": list.footer ? { "text": list.footer } : undefined,
                     "action": {
-                        "button": list.buttonText || "Choose",
+                        "button": list.buttonText || "Select",
                         "sections": [{
                             "title": list.title || "Options",
                             "rows": list.rows.map(row => ({
