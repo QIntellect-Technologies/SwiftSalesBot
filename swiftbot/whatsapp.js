@@ -3,6 +3,12 @@ const axios = require('axios');
 require('dotenv').config();
 
 const WHATSAPP_PROVIDER = process.env.WHATSAPP_PROVIDER || 'meta';
+const WHAPI_API_TOKEN = process.env.WHAPI_API_TOKEN;
+const WHAPI_BASE_URL = 'https://gate.whapi.cloud';
+
+// Wati Configuration (legacy/fallback)
+const WATI_API_ENDPOINT = process.env.WATI_API_ENDPOINT;
+const WATI_API_TOKEN = process.env.WATI_API_TOKEN;
 
 async function sendMetaMessage(to, text, buttons = [], list = null) {
     const WHATSAPP_API_URL = `https://graph.facebook.com/v21.0/${process.env.PHONE_NUMBER_ID}/messages`;
