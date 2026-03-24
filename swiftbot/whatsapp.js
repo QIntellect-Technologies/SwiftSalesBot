@@ -179,6 +179,7 @@ async function sendWhapiMessage(to, text, buttons = null, list = null) {
             endpoint = `${baseUrl}/messages/interactive`;
             payload = {
                 "to": to,
+                "type": "button",
                 "body": { "text": text },
                 "action": {
                     "buttons": buttons.map(b => ({
@@ -192,17 +193,20 @@ async function sendWhapiMessage(to, text, buttons = null, list = null) {
             endpoint = `${baseUrl}/messages/interactive`;
             payload = {
                 "to": to,
+                "type": "list",
                 "body": { "text": text },
                 "action": {
-                    "button": list.buttonText || "Select",
-                    "sections": [{
-                        "title": list.title || "Options",
-                        "rows": list.rows.map(row => ({
-                            "id": row.id,
-                            "title": row.title.substring(0, 24),
-                            "description": row.description ? row.description.substring(0, 72) : ""
-                        }))
-                    }]
+                    "list": {
+                        "label": list.buttonText || "Select",
+                        "sections": [{
+                            "title": list.title || "Options",
+                            "rows": list.rows.map(row => ({
+                                "id": row.id,
+                                "title": row.title.substring(0, 24),
+                                "description": row.description ? row.description.substring(0, 72) : ""
+                            }))
+                        }]
+                    }
                 }
             };
         }
