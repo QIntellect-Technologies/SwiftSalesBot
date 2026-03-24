@@ -182,6 +182,7 @@ async function sendWhapiMessage(to, text, buttons = null, list = null) {
                 "body": { "text": text },
                 "action": {
                     "buttons": buttons.map(b => ({
+                        "type": "quick_reply",
                         "id": b.id,
                         "title": b.title
                     }))
