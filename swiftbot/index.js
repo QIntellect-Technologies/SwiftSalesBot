@@ -163,9 +163,12 @@ app.post(['/', '/wati/webhook'], async (req, res) => {
 });
 
 // Whapi Webhook Handler
+const WHAPI_PROCESSED_IDS = new Set();
+
 app.post('/whapi/webhook', async (req, res) => {
     const body = req.body;
-    console.error(`[WHAPI-WEBHOOK] Incoming Request Body: ${JSON.stringify(body, null, 2)}`);
+    console.log(`[CRITICAL-TRACE] ${new Date().toISOString()} - POST /whapi/webhook`);
+    console.log('[WHAPI-WEBHOOK] Incoming Request Body:', JSON.stringify(body, null, 2));
 
     // Whapi usually sends an array of messages or a single message object
     const messages = body.messages || [body];
@@ -174,6 +177,20 @@ app.post('/whapi/webhook', async (req, res) => {
 
     for (const msg of messages) {
         if (!msg.from || msg.from_me) continue; // Skip if no sender or if sent by bot
+        if (!msg.id) continue;
+
+        // Simple deduplication
+        if (WHAPI_PROCESSED_IDS.has(msg.id)) {
+            console.log(`[WHAPI-DEDUPE] Skipping duplicate message ID: ${msg.id}`);
+            continue;
+        }
+        WHAPI_PROCESSED_IDS.add(msg.id);
+        
+        // Keep set size manageable
+        if (WHAPI_PROCESSED_IDS.size > 1000) {
+            const firstId = WHAPI_PROCESSED_IDS.values().next().value;
+            WHAPI_PROCESSED_IDS.delete(firstId);
+        }
 
         try {
             const from = msg.from.split('@')[0]; // Extract number from ID like "92300...@s.whatsapp.net"
