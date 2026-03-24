@@ -182,10 +182,12 @@ async function sendWhapiMessage(to, text, buttons = null, list = null) {
                 "type": "button",
                 "button": {
                     "body": text,
-                    "buttons": buttons.map(b => ({
-                        "id": b.id,
-                        "text": b.title
-                    }))
+                    "action": {
+                        "buttons": buttons.map(b => ({
+                            "id": b.id,
+                            "text": b.title
+                        }))
+                    }
                 }
             };
         } else if (list && list.rows && list.rows.length > 0) {
@@ -195,16 +197,18 @@ async function sendWhapiMessage(to, text, buttons = null, list = null) {
                 "type": "list",
                 "list": {
                     "body": text,
-                    "title": list.header || "Options",
-                    "button": list.buttonText || "Choose",
-                    "sections": [{
-                        "title": list.title || "Options",
-                        "rows": list.rows.map(row => ({
-                            "id": row.id,
-                            "title": row.title.substring(0, 24),
-                            "description": row.description ? row.description.substring(0, 72) : ""
-                        }))
-                    }]
+                    "header": list.header ? { "type": "text", "text": list.header } : undefined,
+                    "action": {
+                        "button": list.buttonText || "Choose",
+                        "sections": [{
+                            "title": list.title || "Options",
+                            "rows": list.rows.map(row => ({
+                                "id": row.id,
+                                "title": row.title.substring(0, 24),
+                                "description": row.description ? row.description.substring(0, 72) : ""
+                            }))
+                        }]
+                    }
                 }
             };
         }
