@@ -166,11 +166,12 @@ app.post(['/', '/wati/webhook'], async (req, res) => {
 
 // Whapi Webhook Handler
 const WHAPI_PROCESSED_IDS = new Set();
+const WHAPI_LAST_MESSAGES = new Map(); // sender -> { text, timestamp }
 
 app.post('/whapi/webhook', async (req, res) => {
     const body = req.body;
-    console.log(`[CRITICAL-TRACE] ${new Date().toISOString()} - POST /whapi/webhook`);
-    console.log('[WHAPI-WEBHOOK] Incoming Request Body:', JSON.stringify(body, null, 2));
+    const traceId = Math.random().toString(36).substring(7).toUpperCase();
+    console.log(`[TRACE-${traceId}] ${new Date().toISOString()} - POST /whapi/webhook`);
 
     // Whapi usually sends an array of messages or a single message object
     const messages = body.messages || [body];
@@ -178,13 +179,20 @@ app.post('/whapi/webhook', async (req, res) => {
     res.sendStatus(200);
 
     for (const msg of messages) {
-        if (!msg.from || msg.from_me) continue; // Skip if no sender or if sent by bot
-        if (msg.from.includes('923703002588')) continue; // Extra loop prevention
+        if (!msg.from) continue;
+        if (msg.from_me) {
+            console.log(`[TRACE-${traceId}] Skipping bot message from ${msg.from}`);
+            continue;
+        }
+        if (msg.from.includes('923703002588')) {
+            console.log(`[TRACE-${traceId}] Skipping loop prevention message`);
+            continue;
+        }
         if (!msg.id) continue;
 
-        // Simple deduplication
+        // 1. ID-based deduplication
         if (WHAPI_PROCESSED_IDS.has(msg.id)) {
-            console.log(`[WHAPI-DEDUPE] Skipping duplicate message ID: ${msg.id}`);
+            console.log(`[TRACE-${traceId}] Skipping duplicate message ID: ${msg.id}`);
             continue;
         }
         WHAPI_PROCESSED_IDS.add(msg.id);
@@ -196,10 +204,11 @@ app.post('/whapi/webhook', async (req, res) => {
         }
 
         try {
-            const from = msg.from.split('@')[0]; // Extract number from ID like "92300...@s.whatsapp.net"
+            const from = msg.from.split('@')[0];
             let text = "";
             let metadata = {};
 
+            // Normalize Whapi payload
             if (msg.type === 'text') {
                 text = msg.text.body;
             } else if (msg.type === 'interactive') {
@@ -211,7 +220,6 @@ app.post('/whapi/webhook', async (req, res) => {
                     metadata.list_item_id = msg.interactive.list_reply.id;
                 }
             } else if (msg.type === 'reply' && msg.reply) {
-                // Whapi specific button/list reply format
                 if (msg.reply.type === 'buttons_reply' && msg.reply.buttons_reply) {
                     text = msg.reply.buttons_reply.id;
                     metadata.button_id = msg.reply.buttons_reply.id;
@@ -219,10 +227,16 @@ app.post('/whapi/webhook', async (req, res) => {
                     text = msg.reply.list_reply.id;
                     metadata.list_item_id = msg.reply.list_reply.id;
                 }
-            } else if (msg.type === 'button') {
-                text = msg.button.id;
-                metadata.button_id = msg.button.id;
             }
+
+            // 2. Content-based deduplication (2 second window)
+            const now = Date.now();
+            const lastMsg = WHAPI_LAST_MESSAGES.get(from);
+            if (lastMsg && lastMsg.text === text && (now - lastMsg.timestamp) < 2000) {
+                console.log(`[TRACE-${traceId}] Skipping content duplicate from ${from}: "${text}"`);
+                continue;
+            }
+            WHAPI_LAST_MESSAGES.set(from, { text, timestamp: now });
 
             // Strip Whapi prefixes like "ButtonsV3:" or "ListV3:" if present
             if (text && typeof text === 'string') {
