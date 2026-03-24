@@ -129,8 +129,15 @@ async function sendWatiMessage(to, text, buttons = [], list = null) {
         console.log('Wati API Response:', JSON.stringify(response.data, null, 2));
         return response.data;
     } catch (error) {
-        console.error('Error sending Wati message:', JSON.stringify(error.response?.data || error.message, null, 2));
-        throw error;
+        console.error('Error sending Wati message:', error.message);
+        if (error.response) {
+            console.error('Wati API Error Response:', JSON.stringify({
+                status: error.response.status,
+                data: error.response.data,
+                headers: error.response.headers
+            }, null, 2));
+        }
+        return null;
     }
 }
 
