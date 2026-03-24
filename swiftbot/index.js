@@ -126,12 +126,18 @@ app.post(['/', '/wati/webhook'], async (req, res) => {
     
     // Normalize Wati payload
     const from = body.waId || body.senderNumber;
+    const isBot = body.owner || body.isOwner || false;
     let text = body.text || body.data;
     let type = body.type;
     let metadata = {};
 
     if (!from) {
         console.error('[WATI-WEBHOOK] No sender ID found, skipping.');
+        return res.sendStatus(200);
+    }
+
+    if (isBot) {
+        console.log(`[WATI-WEBHOOK] Ignoring message sent by bot to ${from}`);
         return res.sendStatus(200);
     }
 
