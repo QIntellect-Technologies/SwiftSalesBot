@@ -377,9 +377,10 @@ async function processIncomingMessage(from, text, metadata = {}) {
     // 8.5 Place Order Final
     else if (metadata.button_id === 'btn_place_order_now') {
         const orderResult = await createOrder({
-            customer_name: from,
+            customer_name: session.customer_name_real || from,
+            customer_phone: session.customer_phone || from,
             items: session.cart,
-            total_amount: session.cart_total,
+            total_amount: session.cart_total || 0,
             delivery_address: session.delivery_address,
             pharmacy_id: '048c8e94-10f2-4dff-ae9d-1eca2a746b46'
         });

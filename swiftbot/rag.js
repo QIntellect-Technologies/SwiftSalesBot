@@ -34,9 +34,9 @@ async function listCompanies() {
         if (error) throw error;
 
         // Get unique manufacturers
-        const uniqueCompanies = [...new Set(data.map(m => m.manufacturer))].slice(0, 10);
-        return uniqueCompanies.map((name, index) => ({
-            id: `comp_${index}`,
+        const uniqueCompanies = [...new Set(data.filter(m => m.manufacturer).map(m => m.manufacturer.trim()))];
+        return uniqueCompanies.map(name => ({
+            id: name,
             name: name
         }));
     } catch (error) {
