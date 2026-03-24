@@ -179,11 +179,11 @@ async function sendWhapiMessage(to, text, buttons = null, list = null) {
             endpoint = `${baseUrl}/messages/interactive`;
             payload = {
                 "to": to,
-                "body": text,
+                "body": { "text": text },
                 "action": {
                     "buttons": buttons.map(b => ({
                         "id": b.id,
-                        "text": b.title
+                        "title": b.title
                     }))
                 }
             };
@@ -191,7 +191,7 @@ async function sendWhapiMessage(to, text, buttons = null, list = null) {
             endpoint = `${baseUrl}/messages/interactive`;
             payload = {
                 "to": to,
-                "body": text,
+                "body": { "text": text },
                 "action": {
                     "button": list.buttonText || "Select",
                     "sections": [{
