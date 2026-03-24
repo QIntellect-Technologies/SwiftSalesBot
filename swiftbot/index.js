@@ -24,7 +24,9 @@ app.use(bodyParser.json());
 app.use(cors());
 
 // Environment Validation
+const PROCESS_ID = Math.random().toString(36).substring(7).toUpperCase();
 const REQUIRED_ENV = ['WHATSAPP_PROVIDER', 'WATI_API_ENDPOINT', 'WATI_API_TOKEN', 'GROQ_API_KEY'];
+console.error(`🔍 [PROCESS-START] ID: ${PROCESS_ID}`);
 console.error('🔍 Checking Environment Variables...');
 REQUIRED_ENV.forEach(key => {
     if (!process.env[key]) {
@@ -177,6 +179,7 @@ app.post('/whapi/webhook', async (req, res) => {
 
     for (const msg of messages) {
         if (!msg.from || msg.from_me) continue; // Skip if no sender or if sent by bot
+        if (msg.from.includes('923703002588')) continue; // Extra loop prevention
         if (!msg.id) continue;
 
         // Simple deduplication
@@ -258,26 +261,42 @@ async function processIncomingMessage(from, text, metadata = {}) {
         updateSession(from, { current_step: 'greeting' });
     }
     // 2. Company List Request
-    else if (normalizedText.includes('browse products') || normalizedText.includes('list companies') || metadata.button_id === 'btn_products' || metadata.button_id === 'btn_companies') {
-        const companies = await listCompanies();
-        ragData = { query_type: 'company_list', retrieved_data: companies };
-        updateSession(from, { current_step: 'browsing_companies', last_companies: companies });
+    else if (normalizedText.includes('browse products') || normalizedText.includes('list companies') || metadata.button_id === 'btn_products' || metadata.button_id === 'btn_companies' || metadata.button_id === 'btn_add_more') {
+        // Handle "Add More" context
+        let companyName = session.selected_company;
+        if (metadata.button_id === 'btn_add_more' && companyName) {
+            // Stay in the same company's categories
+            const categories = await getCategoriesByCompany(companyName);
+            ragData = { query_type: 'category_list_filtered', company: companyName, retrieved_data: categories };
+            updateSession(from, { current_step: 'browsing_categories_filtered', last_categories: categories });
+            
+            responseList = {
+                header: `➕ ${companyName}`,
+                buttonText: 'Categories',
+                title: 'Available Categories',
+                rows: categories.map(cat => ({
+                    id: `cat_${cat.id}`,
+                    title: `📂 ${cat.name.substring(0, 20)}`,
+                    description: `View ${cat.name} medicines`.substring(0, 72)
+                }))
+            };
+        } else {
+            // Show all companies
+            const companies = await listCompanies();
+            ragData = { query_type: 'company_list', retrieved_data: companies };
+            updateSession(from, { current_step: 'browsing_companies', last_companies: companies });
 
-        const headerText = "🏪 *SWIFT SALES MEDICINE DISTRIBUTOR*\n*Official Distribution Channel*\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nPlease select a company from the list below to browse their products:";
-
-        responseList = {
-            header: 'Swift Sales',
-            buttonText: 'Select Company',
-            title: 'Available Companies',
-            rows: companies.map(comp => ({
-                id: `comp_${comp.name}`,
-                title: `🏭 ${comp.name.substring(0, 20)}`,
-                description: `View products from ${comp.name}`.substring(0, 72)
-            }))
-        };
-        // We override the cleanReply later, but we can set a temp one here if needed
-        // However, index.js uses AI to generate reply unless we skip it.
-        // For now, let's keep the logic where AI generates the text, but we give it the context.
+            responseList = {
+                header: 'Swift Sales',
+                buttonText: 'Select Company',
+                title: 'Available Companies',
+                rows: companies.map(comp => ({
+                    id: `comp_${comp.name}`,
+                    title: `🏭 ${comp.name.substring(0, 20)}`,
+                    description: `View products from ${comp.name}`.substring(0, 72)
+                }))
+            };
+        }
     }
     // 3. Company Selected
     else if (session.current_step === 'browsing_companies' && metadata.list_item_id && metadata.list_item_id.startsWith('comp_')) {
@@ -509,7 +528,10 @@ async function processIncomingMessage(from, text, metadata = {}) {
         buttons.push({ id: 'btn_main_menu', title: '🏠 Main Menu' });
     }
 
-    await sendMessage(from, cleanReply, buttons.slice(0, 3), finalResponseList);
+    // Diagnostic Marker
+    const markedReply = `${cleanReply}\n\n◌${PROCESS_ID}`;
+
+    await sendMessage(from, markedReply, buttons.slice(0, 3), finalResponseList);
 }
 
 app.listen(PORT, '0.0.0.0', () => console.log(`[SERVER] SwiftBot v3.1 running on port ${PORT}`));
