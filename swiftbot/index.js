@@ -313,62 +313,96 @@ async function processIncomingMessage(from, text, metadata = {}) {
         }
     }
     // 3. Company Selected
-    else if (session.current_step === 'browsing_companies' && metadata.list_item_id && metadata.list_item_id.startsWith('comp_')) {
-        const companyName = metadata.list_item_id.replace('comp_', '');
-        const categories = await getCategoriesByCompany(companyName);
-        ragData = { query_type: 'category_list_filtered', company: companyName, retrieved_data: categories };
-        updateSession(from, {
-            current_step: 'browsing_categories_filtered',
-            selected_company: companyName,
-            last_categories: categories
-        });
+    else if (session.current_step === 'browsing_companies') {
+        let companyName = null;
+        if (metadata.list_item_id && metadata.list_item_id.startsWith('comp_')) {
+            companyName = metadata.list_item_id.replace('comp_', '');
+        } else if (session.last_companies) {
+            const isNum = /^\d+$/.test(normalizedText);
+            if (isNum) {
+                const idx = parseInt(normalizedText) - 1;
+                if (idx >= 0 && idx < session.last_companies.length) companyName = session.last_companies[idx].name;
+            } else {
+                const match = session.last_companies.find(c => c.name.toLowerCase() === normalizedText);
+                if (match) companyName = match.name;
+            }
+        }
 
-        responseList = {
-            header: `${companyName}`,
-            buttonText: 'Select Category',
-            title: 'Available Categories',
-            rows: categories.map(cat => ({
-                id: `cat_${cat.id}`,
-                title: `📂 ${cat.name.substring(0, 20)}`,
-                description: `View ${cat.name} medicines`.substring(0, 72)
-            }))
-        };
+        if (companyName) {
+            const categories = await getCategoriesByCompany(companyName);
+            ragData = { query_type: 'category_list_filtered', company: companyName, retrieved_data: categories };
+            updateSession(from, { current_step: 'browsing_categories_filtered', selected_company: companyName, last_categories: categories });
+            // Disable responseList due to API limits, handled in cleanReply
+            responseList = null; 
+        } else {
+            // Retry text
+            const searchResults = await searchMedicine(text);
+            if (searchResults.length > 0) {
+                ragData = { query_type: 'product_search', retrieved_data: searchResults };
+                updateSession(from, { last_products: searchResults });
+            }
+        }
     }
     // 4. Category Selected
-    else if (session.current_step === 'browsing_categories_filtered' && metadata.list_item_id && metadata.list_item_id.startsWith('cat_')) {
-        const catId = metadata.list_item_id.replace('cat_', '');
+    else if (session.current_step === 'browsing_categories_filtered') {
+        let catId = null;
         const categories = session.last_categories || (await getCategoriesByCompany(session.selected_company));
+        
+        if (metadata.list_item_id && metadata.list_item_id.startsWith('cat_')) {
+            catId = metadata.list_item_id.replace('cat_', '');
+        } else if (categories) {
+            const isNum = /^\d+$/.test(normalizedText);
+            if (isNum) {
+                const idx = parseInt(normalizedText) - 1;
+                if (idx >= 0 && idx < categories.length) catId = categories[idx].id; // or name
+            } else {
+                const match = categories.find(c => c.name.toLowerCase() === normalizedText);
+                if (match) catId = match.id;
+            }
+        }
+
         const selectedCat = categories.find(c => c.id == catId);
         if (selectedCat) {
-            const products = await getProductsByCompanyAndCategory(session.selected_company, catId, 1);
+            const products = await getProductsByCompanyAndCategory(session.selected_company, selectedCat.name, 1);
             ragData = { query_type: 'product_list', category: selectedCat.name, company: session.selected_company, retrieved_data: products };
-            updateSession(from, {
-                current_step: 'browsing_products',
-                last_category: selectedCat.name,
-                last_products: products,
-                last_page: 1
-            });
-
-            responseList = {
-                header: `${selectedCat.name}`,
-                buttonText: 'Select Medicine',
-                title: 'Available Medicines',
-                rows: products.map(prod => ({
-                    id: `prod_${prod.product_id}`,
-                    title: `💊 ${prod.name.substring(0, 20)}`,
-                    description: `${prod.manufacturer} — Rs. ${prod.price_unit}`.substring(0, 72)
-                }))
-            };
+            updateSession(from, { current_step: 'browsing_products', last_category: selectedCat.name, last_products: products, last_page: 1 });
+            responseList = null;
+        } else {
+            const searchResults = await searchMedicine(text);
+            if (searchResults.length > 0) {
+                ragData = { query_type: 'product_search', retrieved_data: searchResults };
+                updateSession(from, { last_products: searchResults });
+            }
         }
     }
     // 5. Product Selected
-    else if (session.current_step === 'browsing_products' && metadata.list_item_id && metadata.list_item_id.startsWith('prod_')) {
-        const prodId = metadata.list_item_id.replace('prod_', '');
+    else if (session.current_step === 'browsing_products') {
+        let prodId = null;
         const products = session.last_products || [];
+        
+        if (metadata.list_item_id && metadata.list_item_id.startsWith('prod_')) {
+            prodId = metadata.list_item_id.replace('prod_', '');
+        } else if (products) {
+            const isNum = /^\d+$/.test(normalizedText);
+            if (isNum) {
+                const idx = parseInt(normalizedText) - 1;
+                if (idx >= 0 && idx < products.length) prodId = products[idx].product_id;
+            } else {
+                const match = products.find(p => p.name.toLowerCase() === normalizedText);
+                if (match) prodId = match.product_id;
+            }
+        }
+
         const product = products.find(p => p.product_id == prodId);
         if (product) {
             ragData = { query_type: 'product_details', retrieved_data: [product] };
             updateSession(from, { current_step: 'awaiting_quantity', selected_product: product });
+        } else {
+            const searchResults = await searchMedicine(text);
+            if (searchResults.length > 0) {
+                ragData = { query_type: 'product_search', retrieved_data: searchResults };
+                updateSession(from, { last_products: searchResults });
+            }
         }
     }
     // 6. Quantity Received
@@ -491,13 +525,19 @@ async function processIncomingMessage(from, text, metadata = {}) {
 
     if (cleanReply.length < 5 || (ragData && ragData.query_type !== 'none')) {
         if (ragData.query_type === 'company_list') {
-            cleanReply = "🏪 *SWIFT SALES MEDICINE DISTRIBUTOR*\n*Official Distribution Channel*\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nPlease select a company from the list below to browse their products:";
+            const compList = ragData.retrieved_data.map((c, i) => `${i + 1}. ${c.name}`).join('\n');
+            cleanReply = `🏪 *SWIFT SALES MEDICINE DISTRIBUTOR*\n*Official Distribution Channel*\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nPlease select a company from the list below by replying with its name:\n\n${compList}`;
+            responseList = null; // Disable interactive list to bypass 10-item limit
         } else if (ragData.query_type === 'category_list_filtered') {
-            cleanReply = `📂 *${ragData.company} Categories*\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nExcellent choice! We have the following categories for *${ragData.company}*. Please select one:`;
+            const catList = ragData.retrieved_data.map((c, i) => `${i + 1}. ${c.name}`).join('\n');
+            cleanReply = `📂 *${ragData.company} Categories*\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nExcellent choice! We have the following categories for *${ragData.company}*. Please select one by name:\n\n${catList}`;
+            responseList = null;
         } else if (ragData.query_type === 'product_list') {
-            cleanReply = `💊 *${ragData.company} - ${ragData.category}*\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nWe have these medicines available. Please select the one you'd like to order from the list:`;
+            const prodList = ragData.retrieved_data.map((p, i) => `${i + 1}. ${p.name} - Rs.${p.price_unit}`).join('\n');
+            cleanReply = `💊 *${ragData.company} - ${ragData.category}*\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nWe have these medicines available. Please select the one you'd like to order from the list:\n\n${prodList}`;
+            responseList = null;
         } else if (aiSuggestedButtons.length > 0) {
-            cleanReply = "Please select an option from the buttons below:";
+            cleanReply = aiReply + "\n\nPlease select an option from the buttons below:";
         } else if (responseList && responseList.rows && responseList.rows.length > 0) {
             cleanReply = `We found ${responseList.rows.length} items. Please select one from the menu below:`;
         }
@@ -548,4 +588,103 @@ async function processIncomingMessage(from, text, metadata = {}) {
     await sendMessage(from, markedReply, buttons.slice(0, 3), finalResponseList);
 }
 
-app.listen(PORT, '0.0.0.0', () => console.log(`[SERVER] SwiftBot v3.1 running on port ${PORT}`));
+// --- ADMIN API ROUTES (SQLite Integration) ---
+const db = require('./db');
+
+// Add a simple logging middleware for the API
+app.use('/api', (req, res, next) => {
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(`\n[${timestamp}] 🌐 API REQUEST: ${req.method} ${req.originalUrl}`);
+    next();
+});
+
+app.get('/api/medicines', async (req, res) => {
+    try {
+        console.log(`  └─ Fetching all medicines from database...`);
+        const rows = await db.all('SELECT m.*, c.name as category_name FROM medicines m LEFT JOIN categories c ON m.category_id = c.id');
+        console.log(`  └─ ✅ SUCCESS: Returned ${rows.length} medicines to Admin Panel.`);
+        res.json(rows);
+    } catch (err) {
+        console.error(`  └─ ❌ ERROR fetching medicines:`, err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/medicines', async (req, res) => {
+    try {
+        const data = Array.isArray(req.body) ? req.body : [req.body];
+        console.log(`  └─ Initiating bulk insert for ${data.length} medicines...`);
+        
+        await db.run('BEGIN TRANSACTION');
+        const insertStmt = 'INSERT INTO medicines (name, manufacturer, price, cost_price, stock, category_id, generic_name, package_size, batch_number, expiry_date, image_url, min_order_qty) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+        
+        for (const med of data) {
+            await db.run(insertStmt, [
+                med.name, med.manufacturer, med.price || 0, med.cost_price || 0, med.stock || 0, med.category_id || null, med.generic_name || null, med.package_size || null, med.batch_number || null, med.expiry_date || null, med.image_url || null, med.min_order_qty || 1
+            ]);
+        }
+        
+        await db.run('COMMIT');
+        console.log(`  └─ ✅ SUCCESS: Inserted ${data.length} medicines.`);
+        res.json({ success: true, count: data.length });
+    } catch (err) {
+        await db.run('ROLLBACK');
+        console.error(`  └─ ❌ ERROR in bulk insert:`, err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/api/medicines/:id', async (req, res) => {
+    try {
+        console.log(`  └─ Updating medicine ID: ${req.params.id}`);
+        const { name, manufacturer, price, cost_price, stock, category_id, generic_name, package_size } = req.body;
+        await db.run(
+            'UPDATE medicines SET name=?, manufacturer=?, price=?, cost_price=?, stock=?, category_id=?, generic_name=?, package_size=? WHERE id=?',
+            [name, manufacturer, price, cost_price, stock, category_id, generic_name, package_size, req.params.id]
+        );
+        console.log(`  └─ ✅ SUCCESS: Medicine updated.`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(`  └─ ❌ ERROR updating medicine:`, err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/medicines/:id', async (req, res) => {
+    try {
+        console.log(`  └─ Deleting medicine ID: ${req.params.id}`);
+        await db.run('DELETE FROM medicines WHERE id = ?', [req.params.id]);
+        console.log(`  └─ ✅ SUCCESS: Medicine deleted.`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error(`  └─ ❌ ERROR deleting medicine:`, err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/categories', async (req, res) => {
+    try {
+        console.log(`  └─ Fetching all categories...`);
+        const rows = await db.all('SELECT * FROM categories');
+        console.log(`  └─ ✅ SUCCESS: Returned ${rows.length} categories.`);
+        res.json(rows);
+    } catch (err) {
+        console.error(`  └─ ❌ ERROR fetching categories:`, err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/orders', async (req, res) => {
+    try {
+        console.log(`  └─ Fetching all orders...`);
+        const rows = await db.all('SELECT * FROM orders ORDER BY created_at DESC');
+        console.log(`  └─ ✅ SUCCESS: Returned ${rows.length} orders.`);
+        res.json(rows.map(r => ({ ...r, items: JSON.parse(r.items) })));
+    } catch (err) {
+        console.error(`  └─ ❌ ERROR fetching orders:`, err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+const BOT_PORT = process.env.BOT_PORT || 3001;
+app.listen(BOT_PORT, '0.0.0.0', () => console.log(`[SERVER] SQLite SwiftBot v4.0 running on port ${BOT_PORT}`));

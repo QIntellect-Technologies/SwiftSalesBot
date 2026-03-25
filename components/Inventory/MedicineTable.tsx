@@ -92,44 +92,37 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch, onUploadCl
   // Fixed type for bulkEditValues to ensure status matches Medicine['status'] union literal types
   const [bulkEditValues, setBulkEditValues] = useState<{ category?: string, status?: Medicine['status'], manufacturer?: string }>({});
 
-  // --- Supabase Integration ---
+  // --- Local DB Integration ---
   const fetchMedicines = async () => {
     try {
-      let allMedicines: Medicine[] = [];
-      let from = 0;
-      let to = 999;
-      let hasMore = true;
+      const { data, error } = await supabase
+        .from('medicines')
+        .select('*')
+        .order('name', { ascending: true })
+        .range(0, 99999);
 
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from('medicines')
-          .select('*')
-          .order('name', { ascending: true })
-          .range(from, to);
+      if (error) throw error;
 
-        if (error) throw error;
-
-        if (data && data.length > 0) {
-          allMedicines = [...allMedicines, ...data];
-          if (data.length < 1000) {
-            hasMore = false;
-          } else {
-            from += 1000;
-            to += 1000;
-          }
-        } else {
-          hasMore = false;
-        }
+      if (data) {
+        setMedicines(data);
       }
-      setMedicines(allMedicines);
     } catch (error) {
       console.error('Error fetching medicines:', error);
       alert('Failed to load medicines');
     }
   };
 
+  // Re-fetch when upload finishes successfully
+  // The user might click 'Done' in the upload modal, but since ExcelUpload is a separate component here...
+  // Actually, we can listen for window events or just provide an interval for seamless demo sync.
   useEffect(() => {
     fetchMedicines();
+    
+    // Auto refresh every 5s to catch DB updates from ExcelUpload or bot
+    const interval = setInterval(() => {
+        fetchMedicines();
+    }, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {

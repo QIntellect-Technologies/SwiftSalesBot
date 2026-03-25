@@ -1,20 +1,9 @@
-const { createClient } = require('@supabase/supabase-js');
-require('dotenv').config();
-
-const supabaseUrl = process.env.SUPABASE_URL || 'https://utbbhoieopiugfzqighk.supabase.co';
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const db = require('./db');
 
 async function listCategories() {
     try {
-        const { data, error } = await supabase
-            .from('categories')
-            .select('id, name')
-            .limit(10);
-
-        if (error) throw error;
-
-        return data.map(cat => ({
+        const rows = await db.all('SELECT id, name FROM categories LIMIT 10');
+        return rows.map(cat => ({
             id: cat.id,
             name: cat.name
         }));
@@ -26,18 +15,10 @@ async function listCategories() {
 
 async function listCompanies() {
     try {
-        const { data, error } = await supabase
-            .from('medicines')
-            .select('manufacturer')
-            .not('manufacturer', 'is', null);
-
-        if (error) throw error;
-
-        // Get unique manufacturers
-        const uniqueCompanies = [...new Set(data.filter(m => m.manufacturer).map(m => m.manufacturer.trim()))];
-        return uniqueCompanies.map(name => ({
-            id: name,
-            name: name
+        const rows = await db.all('SELECT DISTINCT manufacturer FROM medicines WHERE manufacturer IS NOT NULL');
+        return rows.map(row => ({
+            id: row.manufacturer,
+            name: row.manufacturer
         }));
     } catch (error) {
         console.error('Error listing companies:', error.message);
@@ -47,35 +28,15 @@ async function listCompanies() {
 
 async function getCategoriesByCompany(companyName) {
     try {
-        const { data, error } = await supabase
-            .from('medicines')
-            .select(`
-                category_id,
-                categories (
-                    id,
-                    name
-                )
-            `)
-            .eq('manufacturer', companyName);
-
-        if (error) throw error;
-
-        // Filter and get unique categories
-        const categories = data
-            .filter(med => med.categories)
-            .map(med => med.categories);
-
-        const uniqueCategories = [];
-        const seenIds = new Set();
-
-        categories.forEach(cat => {
-            if (!seenIds.has(cat.id)) {
-                seenIds.add(cat.id);
-                uniqueCategories.push(cat);
-            }
-        });
-
-        return uniqueCategories.slice(0, 10);
+        const query = `
+            SELECT DISTINCT COALESCE(c.name, m.generic_name, 'General') as name 
+            FROM medicines m
+            LEFT JOIN categories c ON m.category_id = c.id
+            WHERE m.manufacturer = ?
+            LIMIT 10
+        `;
+        const rows = await db.all(query, [companyName]);
+        return rows.map((row, idx) => ({ id: idx + 1, name: row.name }));
     } catch (error) {
         console.error('Error fetching categories by company:', error.message);
         return [];
@@ -84,50 +45,31 @@ async function getCategoriesByCompany(companyName) {
 
 async function getProductsByCompanyAndCategory(companyName, categoryOrId, page = 1) {
     try {
-        console.log(`[RAG] Fetching products for Company: ${companyName}, Category/ID: ${categoryOrId}`);
-        const limit = 10; // Increased limit for medicine popup
+        console.log(`[RAG] Fetching products for Company: ${companyName}, Category: ${categoryOrId}`);
+        const limit = 10;
         const offset = (page - 1) * limit;
 
-        let categoryId = null;
-        if (typeof categoryOrId === 'string' && categoryOrId.length > 20) {
-            // Likely a UUID
-            categoryId = categoryOrId;
-        } else {
-            const { data: catData } = await supabase.from('categories').select('id').eq('name', categoryOrId).single();
-            categoryId = catData ? catData.id : null;
-        }
+        const query = `
+            SELECT m.*, COALESCE(c.name, m.generic_name, 'General') as category_name 
+            FROM medicines m 
+            LEFT JOIN categories c ON m.category_id = c.id
+            WHERE m.manufacturer = ? 
+              AND COALESCE(c.name, m.generic_name, 'General') = ?
+            LIMIT ${limit} OFFSET ${offset}
+        `;
+        const rows = await db.all(query, [companyName, categoryOrId]);
 
-        let query = supabase
-            .from('medicines')
-            .select(`
-                *,
-                categories (
-                    name
-                )
-            `)
-            .eq('manufacturer', companyName)
-            .range(offset, offset + limit - 1);
-
-        if (categoryId) {
-            query = query.eq('category_id', categoryId);
-        }
-
-        const { data, error } = await query;
-        if (error) throw error;
-
-        console.log(`[RAG] Found ${data.length} products.`);
-
-        return data.filter(med => med.name).map(med => ({
+        return rows.map(med => ({
             product_id: med.id,
             name: med.name,
             generic_name: med.generic_name || '',
-            category: med.categories ? med.categories.name : 'Medicines',
+            category: med.category_name || 'Medicines',
             manufacturer: med.manufacturer || 'Swift Sales',
             pack_size: med.package_size || 'Unit',
             price_unit: med.price || 0,
             price_box: med.price_box || (med.price ? med.price * 10 : 0),
             stock_qty: med.stock || 0,
-            stock_status: med.status || 'Available',
+            stock_status: med.stock > 0 ? 'Available' : 'Out of Stock',
             min_order: med.min_order_qty || 1
         }));
     } catch (error) {
@@ -136,75 +78,29 @@ async function getProductsByCompanyAndCategory(companyName, categoryOrId, page =
     }
 }
 
-async function getProductsByCategory(categoryName, page = 1) {
-    try {
-        const limit = 5;
-        const offset = (page - 1) * limit;
-
-        const { data: catData } = await supabase.from('categories').select('id').eq('name', categoryName).single();
-        const categoryId = catData ? catData.id : null;
-
-        let query = supabase
-            .from('medicines')
-            .select(`
-                *,
-                categories (
-                    name
-                )
-            `)
-            .range(offset, offset + limit - 1);
-
-        if (categoryId) {
-            query = query.eq('category_id', categoryId);
-        }
-
-        const { data, error } = await query;
-        if (error) throw error;
-
-        return data.filter(med => med.name).map(med => ({
-            product_id: med.id,
-            name: med.name,
-            generic_name: med.generic_name || '',
-            category: med.categories ? med.categories.name : 'Medicines',
-            manufacturer: med.manufacturer || 'Swift Sales',
-            pack_size: med.package_size || 'Unit',
-            price_unit: med.price || 0,
-            price_box: med.price_box || (med.price ? med.price * 10 : 0),
-            stock_qty: med.stock || 0,
-            stock_status: med.status || 'Available',
-            min_order: med.min_order_qty || 1
-        }));
-    } catch (error) {
-        console.error('Error fetching products by category:', error.message);
-        return [];
-    }
-}
-
 async function searchMedicine(queryText) {
     try {
-        const { data, error } = await supabase
-            .from('medicines')
-            .select(`
-                *,
-                categories (
-                    name
-                )
-            `)
-            .or(`name.ilike.%${queryText}%,generic_name.ilike.%${queryText}%`)
-            .limit(5);
-
-        if (error) throw error;
-        return data.filter(med => med.name).map(med => ({
+        const query = `
+            SELECT m.*, c.name as category_name 
+            FROM medicines m 
+            JOIN categories c ON m.category_id = c.id
+            WHERE m.name LIKE ? OR m.generic_name LIKE ?
+            LIMIT 5
+        `;
+        const pattern = `%${queryText}%`;
+        const rows = await db.all(query, [pattern, pattern]);
+        
+        return rows.map(med => ({
             product_id: med.id,
             name: med.name,
             generic_name: med.generic_name || '',
-            category: med.categories ? med.categories.name : 'Medicines',
+            category: med.category_name || 'Medicines',
             manufacturer: med.manufacturer || 'Swift Sales',
             pack_size: med.package_size || 'Unit',
             price_unit: med.price || 0,
             price_box: med.price_box || (med.price ? med.price * 10 : 0),
             stock_qty: med.stock || 0,
-            stock_status: med.status || 'Available',
+            stock_status: med.stock > 0 ? 'Available' : 'Out of Stock',
             min_order: med.min_order_qty || 1
         }));
     } catch (error) {
@@ -215,32 +111,27 @@ async function searchMedicine(queryText) {
 
 async function getMedicineById(productId) {
     try {
-        const { data, error } = await supabase
-            .from('medicines')
-            .select(`
-                *,
-                categories (
-                    name
-                )
-            `)
-            .eq('id', productId)
-            .single();
+        const row = await db.get(`
+            SELECT m.*, c.name as category_name 
+            FROM medicines m 
+            JOIN categories c ON m.category_id = c.id
+            WHERE m.id = ?
+        `, [productId]);
 
-        if (error) throw error;
-        if (!data) return null;
+        if (!row) return null;
 
         return {
-            product_id: data.id,
-            name: data.name,
-            generic_name: data.generic_name || '',
-            category: data.categories ? data.categories.name : 'Medicines',
-            manufacturer: data.manufacturer || 'Swift Sales',
-            pack_size: data.package_size || 'Unit',
-            price_unit: data.price || 0,
-            price_box: data.price_box || (data.price ? data.price * 10 : 0),
-            stock_qty: data.stock || 0,
-            stock_status: data.status || 'Available',
-            min_order: data.min_order_qty || 1
+            product_id: row.id,
+            name: row.name,
+            generic_name: row.generic_name || '',
+            category: row.category_name || 'Medicines',
+            manufacturer: row.manufacturer || 'Swift Sales',
+            pack_size: row.package_size || 'Unit',
+            price_unit: row.price || 0,
+            price_box: row.price_box || (row.price ? row.price * 10 : 0),
+            stock_qty: row.stock || 0,
+            stock_status: row.stock > 0 ? 'Available' : 'Out of Stock',
+            min_order: row.min_order_qty || 1
         };
     } catch (error) {
         console.error('Error fetching medicine by ID:', error.message);
@@ -251,21 +142,25 @@ async function getMedicineById(productId) {
 async function createOrder(orderData) {
     try {
         const orderNumber = `SW-${Date.now().toString().slice(-6)}`;
-        const { data, error } = await supabase
-            .from('orders')
-            .insert([{
-                ...orderData,
-                order_number: orderNumber,
-                status: 'pending',
-                mode: 'WhatsApp',
-                payment_method: 'Cash on Delivery',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            }])
-            .select();
+        const jsonItems = JSON.stringify(orderData.items);
+        
+        const result = await db.run(`
+            INSERT INTO orders 
+            (order_number, customer_name, customer_phone, items, total_amount, delivery_address, status, mode, payment_method) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+            orderNumber,
+            orderData.customer_name,
+            orderData.customer_phone,
+            jsonItems,
+            orderData.total_amount,
+            orderData.delivery_address,
+            'pending',
+            'WhatsApp',
+            'Cash on Delivery'
+        ]);
 
-        if (error) throw error;
-        return data[0];
+        return { id: result.lastID, order_number: orderNumber, ...orderData };
     } catch (error) {
         console.error('Error creating order:', error.message);
         return null;
@@ -274,7 +169,6 @@ async function createOrder(orderData) {
 
 module.exports = {
     listCategories,
-    getProductsByCategory,
     searchMedicine,
     getMedicineById,
     createOrder,

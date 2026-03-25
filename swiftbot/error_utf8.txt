@@ -1,0 +1,34 @@
+﻿node : ERROR {
+At line:1 char:1
++ node test-payload.js 
+2> error.txt; 
+Get-Content error.txt 
+| Out-File - ...
++ ~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~
+    + CategoryInfo     
+         : NotSpecifi  
+  ed: (ERROR {:Strin   
+ g) [], RemoteExcep    
+tion
+    + FullyQualifiedEr 
+   rorId : NativeComm  
+  andError
+ 
+  "error": {
+    "message": "(#100) 
+Invalid parameter",
+    "type": 
+"OAuthException",
+    "code": 100,
+    "error_data": {
+      
+"messaging_product": 
+"whatsapp",
+      "details": 
+"Invalid parameter"
+    },
+    "fbtrace_id": "At1U
+fgLhINBjpw7hbkebucO"
+  }
+}
