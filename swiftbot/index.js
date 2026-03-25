@@ -686,5 +686,5 @@ app.get('/api/orders', async (req, res) => {
     }
 });
 
-const BOT_PORT = process.env.BOT_PORT || 3001;
+const BOT_PORT = process.env.PORT || process.env.BOT_PORT || 3001;
 app.listen(BOT_PORT, '0.0.0.0', () => console.log(`[SERVER] SQLite SwiftBot v4.0 running on port ${BOT_PORT}`));
