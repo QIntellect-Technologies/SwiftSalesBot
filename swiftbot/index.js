@@ -227,106 +227,20 @@ async function processIncomingMessage(from, text, metadata = {}) {
     let responseList = null;
     const normalizedText = (text || "").toLowerCase().trim();
 
-    // 1. Check for Greeting or Navigation
+    // --- PURE AGENT DISCOVERY LOGIC (NO HARDCODING) ---
     const greetingRegex = /^(hi|hello|hey|start|menu|help|hii|helo|hay|hllo)/i;
-    if (normalizedText.match(greetingRegex) || metadata.button_id === 'btn_main_menu' || metadata.button_id === 'btn_back') {
-        Object.assign(session, updateSession(from, { current_step: 'main_menu' }));
+    
+    // 1. Initial Greeting or Main Menu (Fetch Company List for context)
+    if (normalizedText.match(greetingRegex) || metadata.button_id === 'btn_main_menu' || metadata.button_id === 'btn_back' || metadata.button_id === 'btn_companies' || metadata.button_id === 'btn_products') {
+        const companies = await listCompanies();
+        ragData = { query_type: 'discovery', retrieved_data: companies };
     }
+    // 2. Medicine List View
     else if (metadata.button_id === 'btn_medicine_list') {
         Object.assign(session, updateSession(from, { current_step: 'medicine_list_view' }));
     }
-    // If user types a message in medicine_list_view, reset to main_menu to allow AI to respond
-    else if (session.current_step === 'medicine_list_view' && text && !metadata.button_id) {
-        Object.assign(session, updateSession(from, { current_step: 'main_menu' }));
-    }
-    // 2. Company/Product Browsing
-    else if (normalizedText.includes('browse products') || normalizedText.includes('list companies') || metadata.button_id === 'btn_products' || metadata.button_id === 'btn_companies' || metadata.button_id === 'btn_add_more') {
-        let companyName = session.selected_company;
-        if (metadata.button_id === 'btn_add_more' && companyName) {
-            const categories = await getCategoriesByCompany(companyName);
-            ragData = { query_type: 'category_list_filtered', company: companyName, retrieved_data: categories };
-            Object.assign(session, updateSession(from, { current_step: 'browsing_categories_filtered', last_categories: categories }));
-        } else {
-            const companies = await listCompanies();
-            ragData = { query_type: 'company_list', retrieved_data: companies };
-            Object.assign(session, updateSession(from, { current_step: 'browsing_companies', last_companies: companies }));
-        }
-    }
-    else if (session.current_step === 'browsing_companies') {
-        let companyName = null;
-        if (metadata.list_item_id?.startsWith('comp_')) companyName = metadata.list_item_id.replace('comp_', '');
-        else if (session.last_companies) {
-            const isNum = /^\d+$/.test(normalizedText);
-            if (isNum) {
-                const idx = parseInt(normalizedText) - 1;
-                if (idx >= 0 && idx < session.last_companies.length) companyName = session.last_companies[idx].name;
-            } else {
-                companyName = session.last_companies.find(c => c.name.toLowerCase() === normalizedText)?.name;
-            }
-        }
-        if (companyName) {
-            const categories = await getCategoriesByCompany(companyName);
-            ragData = { query_type: 'category_list_filtered', company: companyName, retrieved_data: categories };
-            Object.assign(session, updateSession(from, { current_step: 'browsing_categories_filtered', selected_company: companyName, last_categories: categories }));
-        }
-    }
-    else if (session.current_step === 'browsing_categories_filtered') {
-        let catId = null;
-        const categories = session.last_categories || [];
-        if (metadata.list_item_id?.startsWith('cat_')) catId = metadata.list_item_id.replace('cat_', '');
-        else {
-            const isNum = /^\d+$/.test(normalizedText);
-            if (isNum) {
-                const idx = parseInt(normalizedText) - 1;
-                if (idx >= 0 && idx < categories.length) catId = categories[idx].id;
-            } else {
-                catId = categories.find(c => c.name.toLowerCase() === normalizedText)?.id;
-            }
-        }
-        const selectedCat = categories.find(c => c.id == catId);
-        if (selectedCat) {
-            const products = await getProductsByCompanyAndCategory(session.selected_company, selectedCat.name, 1);
-            ragData = { query_type: 'product_list', category: selectedCat.name, company: session.selected_company, retrieved_data: products };
-            Object.assign(session, updateSession(from, { current_step: 'browsing_products', last_category: selectedCat.name, last_products: products, last_page: 1 }));
-        }
-    }
-    else if (session.current_step === 'browsing_products') {
-        let prodId = null;
-        const products = session.last_products || [];
-        if (metadata.list_item_id?.startsWith('prod_')) prodId = metadata.list_item_id.replace('prod_', '');
-        else {
-            const isNum = /^\d+$/.test(normalizedText);
-            if (isNum) {
-                const idx = parseInt(normalizedText) - 1;
-                if (idx >= 0 && idx < products.length) prodId = products[idx].product_id;
-            } else {
-                prodId = products.find(p => p.name.toLowerCase() === normalizedText)?.product_id;
-            }
-        }
-        const product = products.find(p => p.product_id == prodId);
-        if (product) {
-            ragData = { query_type: 'product_details', retrieved_data: [product] };
-            Object.assign(session, updateSession(from, { current_step: 'awaiting_quantity', selected_product: product }));
-        }
-    }
-    // 3. Ordering Flow (Fallback for browsing_products)
-    else if (session.current_step === 'awaiting_quantity' && /^\d+$/.test(normalizedText)) {
-        const qty = parseInt(normalizedText);
-        const product = session.selected_product;
-        if (product && qty > 0) {
-            const updatedCart = [...session.cart, { product_id: product.product_id, product_name: product.name, quantity: qty, unit_price: product.price_unit, subtotal: qty * product.price_unit }];
-            Object.assign(session, updateSession(from, { cart: updatedCart, current_step: 'cart_updated' }));
-            ragData = { query_type: 'cart_update', retrieved_data: updatedCart };
-        }
-    }
-    // 4. About Us
-    else if (normalizedText.includes('about us') || metadata.button_id === 'btn_about') {
-        ragData = { query_type: 'about_us', retrieved_data: [{ company: "Swift Sales Medicine Distributor", location: "Sardar Colony, Rahim Yar Khan", specialty: "Exclusive distributor for Shrooq, Avant, Swiss IQ, Star, and Ospheric Pharma." }] };
-        Object.assign(session, updateSession(from, { current_step: 'viewing_about' }));
-    }
-    // 5. Default: Search (Enhanced for Multi-Product)
+    // 3. Search (Enhanced for Multi-Product or Single Search)
     else {
-        // Split by "and", ",", "&", or "+" to identify multiple product mentions
         const separators = /[\,&\+]|\band\b/gi;
         const potentialProducts = text.split(separators).map(p => p.trim()).filter(p => p.length > 2);
         
@@ -342,8 +256,7 @@ async function processIncomingMessage(from, text, metadata = {}) {
         }
 
         if (searchResults.length > 0) {
-            ragData = { query_type: 'product_search_multi', retrieved_data: searchResults };
-            Object.assign(session, updateSession(from, { last_products: searchResults }));
+            ragData = { query_type: 'product_context', retrieved_data: searchResults };
         }
     }
 
@@ -392,47 +305,21 @@ async function processIncomingMessage(from, text, metadata = {}) {
 
     let cleanReply = aiReply.replace(/(🏠|🏭|🛍️|🔍|📦|✅|❌|➕|🔙|ℹ️)\s*.*?(?=($|\n))/g, '').trim();
 
-    if (session.current_step === 'medicine_list_view') {
-        cleanReply = "You can view our complete medicine inventory by downloading the CSV file below.";
-    }
-
-    if (orderPlacedResult) {
-        cleanReply += `\n\n📦 *Order Placed Successfully!*\nOrder ID: ${orderPlacedResult.order_number}`;
-    }
-
-    if (ragData.query_type === 'company_list') {
-        const compList = ragData.retrieved_data.map((c, i) => `${i + 1}. ${c.name}`).join('\n');
-        cleanReply = `🏪 *SWIFT SALES MEDICINE DISTRIBUTOR*\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nPlease select a company:\n\n${compList}`;
-    } else if (ragData.query_type === 'category_list_filtered') {
-        const catList = ragData.retrieved_data.map((c, i) => `${i + 1}. ${c.name}`).join('\n');
-        cleanReply = `📂 *${ragData.company} Categories*\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nPlease select a category:\n\n${catList}`;
-    } else if (ragData.query_type === 'product_list') {
-        const prodList = ragData.retrieved_data.map((p, i) => `${i + 1}. ${p.name} - Rs.${p.price_unit}`).join('\n');
-        cleanReply = `💊 *${ragData.company} - ${ragData.category}*\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nPlease select a medicine:\n\n${prodList}`;
-    }
-
     let buttons = aiSuggestedButtons.slice(0, 3).map(b => ({ 
         id: b.id || 'btn_ai', 
         title: b.title.substring(0, 20) 
     }));
 
-    // Safety Net: Always ensure "Medicine List" is available during discovery/ordering
-    const hasMedList = buttons.some(b => b.id === 'btn_medicine_list');
-    if (!hasMedList && buttons.length < 3 && session.current_step !== 'medicine_list_view' && session.current_step !== 'order_placed') {
-        buttons.push({ id: 'btn_medicine_list', title: '💊 Medicine List' });
-    }
+    if (session.current_step === 'medicine_list_view') {
+        cleanReply = "You can view our complete medicine inventory by downloading the CSV file below.";
+        const baseUrl = process.env.RAILWAY_STATIC_URL || 'swiftsalesbot-production.up.railway.app';
+        cleanReply += `\n\n📄 *Download Link:*\nhttps://${baseUrl}/api/inventory/download`;
+        buttons = [{ id: 'btn_back', title: '🔙 Back' }];
+        Object.assign(session, updateSession(from, { current_step: 'browsing' })); // Reset for next message
+    } 
 
     if (buttons.length === 0) {
-        const lowerReply = cleanReply.toLowerCase();
-        if (session.current_step === 'main_menu' || lowerReply.includes('welcome') || lowerReply.includes('assist') || lowerReply.includes('help')) {
-            buttons = [{ id: 'btn_medicine_list', title: '💊 Medicine List' }, { id: 'btn_about', title: 'ℹ️ About Us' }];
-        } else if (session.current_step === 'medicine_list_view') {
-            const baseUrl = process.env.RAILWAY_STATIC_URL || 'swift-sales-panel-production.up.railway.app';
-            cleanReply += `\n\n📄 *Download Link:*\nhttps://${baseUrl}/api/inventory/download`;
-            buttons = [{ id: 'btn_back', title: '🔙 Back' }];
-        } else {
-            buttons = [{ id: 'btn_medicine_list', title: '💊 Medicine List' }, { id: 'btn_main_menu', title: '🏠 Main Menu' }];
-        }
+        buttons = [{ id: 'btn_medicine_list', title: '💊 Medicine List' }, { id: 'btn_about', title: 'ℹ️ About Us' }];
     }
 
     await sendMessage(from, `${cleanReply}\n\n◌${PROCESS_ID}`, buttons.slice(0, 3));
