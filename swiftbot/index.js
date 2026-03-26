@@ -233,6 +233,10 @@ async function processIncomingMessage(from, text, metadata = {}) {
     else if (metadata.button_id === 'btn_medicine_list') {
         Object.assign(session, updateSession(from, { current_step: 'medicine_list_view' }));
     }
+    // If user types a message in medicine_list_view, reset to main_menu to allow AI to respond
+    else if (session.current_step === 'medicine_list_view' && text && !metadata.button_id) {
+        Object.assign(session, updateSession(from, { current_step: 'main_menu' }));
+    }
     // 2. Company/Product Browsing
     else if (normalizedText.includes('browse products') || normalizedText.includes('list companies') || metadata.button_id === 'btn_products' || metadata.button_id === 'btn_companies' || metadata.button_id === 'btn_add_more') {
         let companyName = session.selected_company;
