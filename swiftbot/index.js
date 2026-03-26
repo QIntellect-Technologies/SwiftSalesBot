@@ -190,7 +190,7 @@ app.post('/whapi/webhook', async (req, res) => {
                 const sub = msg.interactive || msg.reply;
                 const reply = sub.button_reply || sub.buttons_reply || sub.list_reply;
                 if (reply) {
-                    text = reply.id;
+                    text = reply.title || reply.id;
                     metadata.button_id = reply.id;
                 }
             }
@@ -309,7 +309,7 @@ async function processIncomingMessage(from, text, metadata = {}) {
             Object.assign(session, updateSession(from, { current_step: 'awaiting_quantity', selected_product: product }));
         }
     }
-    // 3. Ordering Flow
+    // 3. Ordering Flow (Fallback for browsing_products)
     else if (session.current_step === 'awaiting_quantity' && /^\d+$/.test(normalizedText)) {
         const qty = parseInt(normalizedText);
         const product = session.selected_product;
@@ -317,33 +317,6 @@ async function processIncomingMessage(from, text, metadata = {}) {
             const updatedCart = [...session.cart, { product_id: product.product_id, product_name: product.name, quantity: qty, unit_price: product.price_unit, subtotal: qty * product.price_unit }];
             Object.assign(session, updateSession(from, { cart: updatedCart, current_step: 'cart_updated' }));
             ragData = { query_type: 'cart_update', retrieved_data: updatedCart };
-        }
-    }
-    else if (normalizedText.match(/place order|confirm order|checkout/) || metadata.button_id === 'btn_checkout') {
-        if (session.cart.length > 0) {
-            Object.assign(session, updateSession(from, { current_step: 'awaiting_name' }));
-            ragData = { query_type: 'order_flow', step: 'name_request' };
-        }
-    }
-    else if (session.current_step === 'awaiting_name' && normalizedText.length > 2) {
-        Object.assign(session, updateSession(from, { current_step: 'awaiting_phone', customer_name_real: text }));
-        ragData = { query_type: 'order_flow', step: 'phone_request', name: text };
-    }
-    else if (session.current_step === 'awaiting_phone' && normalizedText.replace(/\D/g, '').length >= 10) {
-        Object.assign(session, updateSession(from, { current_step: 'awaiting_address', customer_phone: text }));
-        ragData = { query_type: 'order_flow', step: 'address_request', phone: text };
-    }
-    else if (session.current_step === 'awaiting_address' && normalizedText.length > 5) {
-        const fullDetails = `${session.customer_name_real}, ${session.customer_phone}, ${text}`;
-        Object.assign(session, updateSession(from, { current_step: 'confirming_order', delivery_address: fullDetails }));
-        ragData = { query_type: 'order_flow', step: 'final_confirmation', details: fullDetails };
-    }
-    else if (metadata.button_id === 'btn_place_order_now') {
-        const orderResult = await createOrder({ customer_name: session.customer_name_real || from, customer_phone: session.customer_phone || from, items: session.cart, total_amount: session.cart_total || 0, delivery_address: session.delivery_address, pharmacy_id: '048c8e94-10f2-4dff-ae9d-1eca2a746b46' });
-        if (orderResult) {
-            ragData = { query_type: 'order_success', order_number: orderResult.order_number };
-            clearCart(from);
-            Object.assign(session, updateSession(from, { current_step: 'order_placed' }));
         }
     }
     // 4. About Us
@@ -385,12 +358,32 @@ async function processIncomingMessage(from, text, metadata = {}) {
 
     // AI Actions
     let aiSuggestedButtons = [];
+    let orderPlacedResult = null;
     if (actions && actions.length > 0) {
         let cart = [...session.cart];
-        actions.forEach(a => {
-            if (a.type === 'ADD_TO_CART') cart.push({ product_id: a.product_id, product_name: a.product_name, quantity: a.quantity, unit_price: a.price, subtotal: a.quantity * a.price });
-            else if (a.type === 'SET_BUTTONS') aiSuggestedButtons = a.buttons;
-        });
+        for (const a of actions) {
+            if (a.type === 'ADD_TO_CART') {
+                cart.push({ product_id: a.product_id, product_name: a.product_name, quantity: a.quantity, unit_price: a.price, subtotal: a.quantity * a.price });
+            } else if (a.type === 'SET_BUTTONS') {
+                aiSuggestedButtons = a.buttons;
+            } else if (a.type === 'CLEAR_CART') {
+                clearCart(from);
+                cart = [];
+            } else if (a.type === 'PLACE_ORDER') {
+                const totalAmount = cart.reduce((sum, item) => sum + item.subtotal, 0);
+                orderPlacedResult = await createOrder({
+                    customer_name: a.customer_name || 'Not Provided',
+                    customer_phone: a.customer_phone || from,
+                    items: cart,
+                    total_amount: totalAmount,
+                    delivery_address: a.delivery_address || 'Not Provided',
+                    pharmacy_id: '048c8e94-10f2-4dff-ae9d-1eca2a746b46'
+                });
+                clearCart(from);
+                cart = [];
+                Object.assign(session, updateSession(from, { current_step: 'order_placed' }));
+            }
+        }
         updateSession(from, { cart });
     }
 
@@ -401,6 +394,10 @@ async function processIncomingMessage(from, text, metadata = {}) {
 
     if (session.current_step === 'medicine_list_view') {
         cleanReply = "You can view our complete medicine inventory by downloading the CSV file below.";
+    }
+
+    if (orderPlacedResult) {
+        cleanReply += `\n\n📦 *Order Placed Successfully!*\nOrder ID: ${orderPlacedResult.order_number}`;
     }
 
     if (ragData.query_type === 'company_list') {
@@ -416,7 +413,10 @@ async function processIncomingMessage(from, text, metadata = {}) {
 
     let buttons = [];
     if (aiSuggestedButtons.length > 0 && session.current_step !== 'main_menu' && session.current_step !== 'medicine_list_view') {
-        buttons = aiSuggestedButtons.map(b => ({ id: b.id || 'btn_ai', title: b.title }));
+        buttons = aiSuggestedButtons.slice(0, 3).map(b => ({ 
+            id: b.id || 'btn_ai', 
+            title: b.title.substring(0, 20) 
+        }));
     }
     else {
         const lowerReply = cleanReply.toLowerCase();
@@ -426,9 +426,9 @@ async function processIncomingMessage(from, text, metadata = {}) {
             const baseUrl = process.env.RAILWAY_STATIC_URL || 'swift-sales-panel-production.up.railway.app';
             cleanReply += `\n\n📄 *Download Link:*\nhttps://${baseUrl}/api/inventory/download`;
             buttons = [{ id: 'btn_back', title: '🔙 Back' }];
-        } else if (lowerReply.includes('welcome') || lowerReply.includes('how can i help')) buttons = [{ id: 'btn_products', title: '🛍️ Browse Products' }, { id: 'btn_about', title: 'ℹ️ About Us' }];
-        else if (lowerReply.includes('added to cart')) buttons = [{ id: 'btn_add_more', title: '➕ Add More' }, { id: 'btn_checkout', title: '✅ Place Order' }];
-        else if (lowerReply.includes('successfully placed')) buttons = [{ id: 'btn_main_menu', title: '🏠 Main Menu' }];
+        } else if (lowerReply.includes('welcome') || lowerReply.includes('how can i help')) {
+            buttons = [{ id: 'btn_products', title: '🛍️ Browse Products' }, { id: 'btn_about', title: 'ℹ️ About Us' }];
+        }
     }
 
     if (buttons.length === 0) buttons.push({ id: 'btn_main_menu', title: '🏠 Main Menu' });
