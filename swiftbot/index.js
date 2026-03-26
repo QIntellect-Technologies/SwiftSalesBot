@@ -377,9 +377,7 @@ async function processIncomingMessage(from, text, metadata = {}) {
 
     let cleanReply = aiReply.replace(/(🏠|🏭|🛍️|🔍|📦|✅|❌|➕|🔙|ℹ️)\s*.*?(?=($|\n))/g, '').trim();
 
-    if (session.current_step === 'main_menu') {
-        cleanReply = "Hi, welcome to Swift Sale";
-    } else if (session.current_step === 'medicine_list_view') {
+    if (session.current_step === 'medicine_list_view') {
         cleanReply = "You can view our complete medicine inventory by downloading the CSV file below.";
     }
 
@@ -400,7 +398,7 @@ async function processIncomingMessage(from, text, metadata = {}) {
     }
     else {
         const lowerReply = cleanReply.toLowerCase();
-        if (session.current_step === 'main_menu' || lowerReply.includes('welcome to swift sale')) {
+        if (session.current_step === 'main_menu' || lowerReply.includes('welcome to swift sale') || lowerReply.includes('how can i assist') || lowerReply.includes('how can i help')) {
             buttons = [{ id: 'btn_medicine_list', title: '💊 Medicine List' }, { id: 'btn_about', title: 'ℹ️ About Us' }];
         } else if (session.current_step === 'medicine_list_view') {
             const baseUrl = process.env.RAILWAY_STATIC_URL || 'swift-sales-panel-production.up.railway.app';
