@@ -125,7 +125,7 @@ app.post(['/webhook', '/whatsapp/webhook'], async (req, res) => {
 app.post(['/', '/wati/webhook'], async (req, res) => {
     const body = req.body;
     console.error(`[WATI-WEBHOOK] Incoming Request Body: ${JSON.stringify(body, null, 2)}`);
-    
+
     const from = body.waId || body.senderNumber;
     const isBot = body.owner || body.isOwner || false;
     let text = body.text || body.data;
@@ -139,7 +139,7 @@ app.post(['/', '/wati/webhook'], async (req, res) => {
 
     try {
         if (type === 'button_reply' || (body.data && !body.text && type !== 'text')) {
-            metadata.button_id = body.data; 
+            metadata.button_id = body.data;
             text = body.text || body.data;
         } else if (type === 'list_reply') {
             metadata.list_item_id = body.data;
@@ -360,8 +360,10 @@ async function processIncomingMessage(from, text, metadata = {}) {
 
     // AI Generation
     let aiPrompt = text;
-    if (session.current_step === 'main_menu') aiPrompt = "User said Hi. Respond strictly with: 'Hi, welcome to Swift Sale'.";
-    else if (session.current_step === 'medicine_list_view') aiPrompt = "User wants to see the medicine list. Respond with: 'You can view our complete medicine inventory by downloading the CSV file below.'";
+    if (session.current_step === 'medicine_list_view' && !text.toLowerCase().includes('download')) {
+        // If they are in medicine_list_view but ask something else, let the AI handle it
+        aiPrompt = text;
+    }
 
     const { content: aiReply, actions } = await generateAIResponse(aiPrompt, ragData, session);
 
@@ -420,8 +422,8 @@ async function processIncomingMessage(from, text, metadata = {}) {
 
 // --- ADMIN API ROUTES ---
 const db = require('./db');
-try { db.db.exec('ALTER TABLE medicines ADD COLUMN product_id TEXT'); } catch(_) {}
-try { db.db.exec("ALTER TABLE medicines ADD COLUMN stock_status TEXT DEFAULT 'In Stock'"); } catch(_) {}
+try { db.db.exec('ALTER TABLE medicines ADD COLUMN product_id TEXT'); } catch (_) { }
+try { db.db.exec("ALTER TABLE medicines ADD COLUMN stock_status TEXT DEFAULT 'In Stock'"); } catch (_) { }
 
 app.get('/api/medicines', async (req, res) => {
     try {
@@ -442,7 +444,7 @@ app.post('/api/inventory/upload', async (req, res) => {
             const existing = row.product_id ? await db.get('SELECT id FROM medicines WHERE product_id = ?', [String(row.product_id).trim()]) : null;
             if (existing && dupMode !== 'replace') {
                 if (dupMode === 'skip') continue;
-                await db.run('UPDATE medicines SET name=?, manufacturer=?, price=?, generic_name=?, package_size=?, stock_status=? WHERE id=?', [row.medicine_name, row.company, parseFloat(row.price)||0, row.category, row.pack_size, row.stock_status, existing.id]);
+                await db.run('UPDATE medicines SET name=?, manufacturer=?, price=?, generic_name=?, package_size=?, stock_status=? WHERE id=?', [row.medicine_name, row.company, parseFloat(row.price) || 0, row.category, row.pack_size, row.stock_status, existing.id]);
             } else {
                 let catId = null;
                 if (row.category) {
@@ -450,7 +452,7 @@ app.post('/api/inventory/upload', async (req, res) => {
                     if (cat) catId = cat.id;
                     else { const r = await db.run('INSERT OR IGNORE INTO categories (name) VALUES (?)', [row.category]); catId = r.lastID; }
                 }
-                await db.run('INSERT INTO medicines (product_id, name, manufacturer, price, stock_status, generic_name, package_size, category_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [String(row.product_id||''), row.medicine_name, row.company, parseFloat(row.price)||0, row.stock_status, row.category, row.pack_size, catId]);
+                await db.run('INSERT INTO medicines (product_id, name, manufacturer, price, stock_status, generic_name, package_size, category_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [String(row.product_id || ''), row.medicine_name, row.company, parseFloat(row.price) || 0, row.stock_status, row.category, row.pack_size, catId]);
             }
         }
         await db.run('COMMIT');
@@ -463,7 +465,7 @@ app.get('/api/inventory/download', async (req, res) => {
         const medicines = await db.all(`SELECT product_id, name, package_size, generic_name as category, manufacturer as company, price, stock_status FROM medicines ORDER BY name ASC`);
         let csv = 'Product ID,Medicine Name,Pack Size,Category,Company,Price (Rs.),Stock Status\n';
         medicines.forEach(m => {
-            csv += `"${String(m.product_id||'').replace(/"/g,'""')}","${String(m.name||'').replace(/"/g,'""')}","${String(m.package_size||'').replace(/"/g,'""')}","${String(m.category||'').replace(/"/g,'""')}","${String(m.company||'').replace(/"/g,'""')}",${m.price||0},"${String(m.stock_status||'In Stock').replace(/"/g,'""')}"\n`;
+            csv += `"${String(m.product_id || '').replace(/"/g, '""')}","${String(m.name || '').replace(/"/g, '""')}","${String(m.package_size || '').replace(/"/g, '""')}","${String(m.category || '').replace(/"/g, '""')}","${String(m.company || '').replace(/"/g, '""')}",${m.price || 0},"${String(m.stock_status || 'In Stock').replace(/"/g, '""')}"\n`;
         });
         res.setHeader('Content-Type', 'text/csv');
         res.setHeader('Content-Disposition', 'attachment; filename=Inventory_Master.csv');
