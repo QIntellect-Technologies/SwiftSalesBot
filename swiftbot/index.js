@@ -327,22 +327,36 @@ async function processIncomingMessage(from, text, metadata = {}) {
 
     let cleanReply = aiReply.replace(/(🏠|🏭|🛍️|🔍|📦|✅|❌|➕|🔙|ℹ️)\s*.*?(?=($|\n))/g, '').trim();
 
-    let buttons = aiSuggestedButtons.slice(0, 3).map(b => ({ 
-        id: b.id || 'btn_ai', 
-        title: b.title.substring(0, 20) 
+    let buttons = aiSuggestedButtons.slice(0, 3).map(b => ({
+        id: b.id || 'btn_ai',
+        title: String(b.title).substring(0, 20)
     }));
 
-    if (session.current_step === 'medicine_list_view') {
-        cleanReply = "You can view our complete medicine inventory by downloading the CSV file below.";
-        const baseUrl = process.env.RAILWAY_STATIC_URL || 'swiftsalesbot-production.up.railway.app';
-        cleanReply += `\n\n📄 *Download Link:*\nhttps://${baseUrl}/api/inventory/download`;
-        buttons = [{ id: 'btn_back', title: '🔙 Back' }];
-        Object.assign(session, updateSession(from, { current_step: 'browsing' })); // Reset for next message
-    } 
-
+    // Smart server-side fallback: if AI forgot buttons, provide smart defaults based on cart state
     if (buttons.length === 0) {
-        buttons = [{ id: 'btn_medicine_list', title: '💊 Medicine List' }, { id: 'btn_about', title: 'ℹ️ About Us' }];
+        const currentCart = session.cart || [];
+        if (session.current_step === 'order_placed') {
+            // Post-order: offer to reorder or track
+            buttons = [
+                { id: 'btn_medicine_list', title: '💊 Order Again' },
+                { id: 'btn_track', title: '📦 Track Order' }
+            ];
+        } else if (currentCart.length > 0) {
+            // Has items: most logical action is checkout or add more
+            buttons = [
+                { id: 'checkout', title: '✅ Checkout' },
+                { id: 'btn_medicine_list', title: '➕ Add More' },
+                { id: 'btn_home', title: '🏠 Home' }
+            ];
+        } else {
+            // New / empty cart: show discovery options
+            buttons = [
+                { id: 'btn_medicine_list', title: '💊 Medicine List' },
+                { id: 'btn_about', title: 'ℹ️ About Us' }
+            ];
+        }
     }
+
 
     await sendMessage(from, `${cleanReply}\n\n◌${PROCESS_ID}`, buttons.slice(0, 3));
 }
