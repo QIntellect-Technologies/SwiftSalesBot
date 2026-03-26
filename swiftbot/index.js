@@ -377,6 +377,12 @@ async function processIncomingMessage(from, text, metadata = {}) {
 
     let cleanReply = aiReply.replace(/(🏠|🏭|🛍️|🔍|📦|✅|❌|➕|🔙|ℹ️)\s*.*?(?=($|\n))/g, '').trim();
 
+    if (session.current_step === 'main_menu') {
+        cleanReply = "Hi, welcome to Swift Sale";
+    } else if (session.current_step === 'medicine_list_view') {
+        cleanReply = "You can view our complete medicine inventory by downloading the CSV file below.";
+    }
+
     if (ragData.query_type === 'company_list') {
         const compList = ragData.retrieved_data.map((c, i) => `${i + 1}. ${c.name}`).join('\n');
         cleanReply = `🏪 *SWIFT SALES MEDICINE DISTRIBUTOR*\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nPlease select a company:\n\n${compList}`;
@@ -389,7 +395,9 @@ async function processIncomingMessage(from, text, metadata = {}) {
     }
 
     let buttons = [];
-    if (aiSuggestedButtons.length > 0) buttons = aiSuggestedButtons.map(b => ({ id: b.id || 'btn_ai', title: b.title }));
+    if (aiSuggestedButtons.length > 0 && session.current_step !== 'main_menu' && session.current_step !== 'medicine_list_view') {
+        buttons = aiSuggestedButtons.map(b => ({ id: b.id || 'btn_ai', title: b.title }));
+    }
     else {
         const lowerReply = cleanReply.toLowerCase();
         if (session.current_step === 'main_menu' || lowerReply.includes('welcome to swift sale')) {
