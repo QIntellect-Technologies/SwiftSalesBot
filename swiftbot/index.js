@@ -44,7 +44,7 @@ app.use((req, res, next) => {
     next();
 });
 
-const PORT = process.env.PORT || 3999;
+const PORT = process.env.PORT || 3005;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'swift_sales_token';
 
 app.get('/', (req, res) => res.send('SwiftBot v4.1 Server is running!'));
@@ -160,13 +160,21 @@ const WHAPI_PROCESSED_IDS = new Set();
 const WHAPI_LAST_MESSAGES = new Map();
 
 app.post('/whapi/webhook', async (req, res) => {
+    console.error(`[WHAPI-TRACE] Incoming POST /whapi/webhook | Body Keys: ${Object.keys(req.body)}`);
     const body = req.body;
     const messages = body.messages || [body];
     res.sendStatus(200);
 
     for (const msg of messages) {
-        if (!msg.from || msg.from_me || !msg.id) continue;
-        if (WHAPI_PROCESSED_IDS.has(msg.id)) continue;
+        console.error(`[WHAPI-TRACE] Processing message from: ${msg.from} | Type: ${msg.type} | ID: ${msg.id}`);
+        if (!msg.from || msg.from_me || !msg.id) {
+            console.error(`[WHAPI-TRACE] Skipping message. Reason: ${!msg.from ? 'No from' : msg.from_me ? 'From me' : 'No ID'}`);
+            continue;
+        }
+        if (WHAPI_PROCESSED_IDS.has(msg.id)) {
+            console.error(`[WHAPI-TRACE] Skipping duplicate ID: ${msg.id}`);
+            continue;
+        }
         WHAPI_PROCESSED_IDS.add(msg.id);
         if (WHAPI_PROCESSED_IDS.size > 1000) WHAPI_PROCESSED_IDS.delete(WHAPI_PROCESSED_IDS.values().next().value);
 
@@ -187,13 +195,20 @@ app.post('/whapi/webhook', async (req, res) => {
 
             const now = Date.now();
             const lastMsg = WHAPI_LAST_MESSAGES.get(from);
-            if (lastMsg && lastMsg.text === text && (now - lastMsg.timestamp) < 2000) continue;
+            if (lastMsg && lastMsg.text === text && (now - lastMsg.timestamp) < 2000) {
+                console.error(`[WHAPI-TRACE] Skipping content duplicate from ${from}`);
+                continue;
+            }
             WHAPI_LAST_MESSAGES.set(from, { text, timestamp: now });
 
             if (text && typeof text === 'string') text = text.replace(/^(ButtonsV3:|ListV3:)/, '');
             if (metadata.button_id && typeof metadata.button_id === 'string') metadata.button_id = metadata.button_id.replace(/^(ButtonsV3:|ListV3:)/, '');
 
-            if (!text && !metadata.button_id) continue;
+            console.error(`[WHAPI-TRACE] Final Processed Text: "${text}" | Metadata: ${JSON.stringify(metadata)}`);
+            if (!text && !metadata.button_id) {
+                console.error(`[WHAPI-TRACE] No text or button_id found, skipping processIncomingMessage`);
+                continue;
+            }
             await processIncomingMessage(from, text, metadata);
         } catch (error) {
             console.error('[CRITICAL ERROR] in Whapi post-webhook processing:', error);
@@ -446,12 +461,11 @@ app.get('/api/inventory/download', async (req, res) => {
     } catch (err) { res.status(500).send('Internal Server Error'); }
 });
 
-const FINAL_PORT = 3005;
-app.listen(FINAL_PORT, '0.0.0.0', (err) => {
-    if (err) return console.error('[CRITICAL-FAILURE] Port ' + FINAL_PORT + ' in-use: ' + err.message);
-    console.log('✅ [SERVER-READY] SQLite SwiftBot is LIVE on port ' + FINAL_PORT);
+app.listen(PORT, '0.0.0.0', (err) => {
+    if (err) return console.error('[CRITICAL-FAILURE] Port ' + PORT + ' in-use: ' + err.message);
+    console.log('✅ [SERVER-READY] SQLite SwiftBot is LIVE on port ' + PORT);
 });
 
-setInterval(() => console.log(`[STATUS] Time: ${new Date().toLocaleTimeString()} | Port: 3005`), 60000);
+setInterval(() => console.log(`[STATUS] Time: ${new Date().toLocaleTimeString()} | Port: ${PORT}`), 60000);
 process.on('uncaughtException', (err) => console.error('[FATAL] Uncaught Exception:', err.message));
 process.on('unhandledRejection', (reason) => console.error('[FATAL] Unhandled Rejection:', reason));
