@@ -39,7 +39,13 @@ import {
 import { ResponsiveContainer, BarChart, Bar, XAxis } from 'recharts';
 import { Medicine } from '../../types';
 import { MOCK_MEDICINES } from '../../constants';
-import { supabase } from '../../lib/supabase';
+
+const API = 'http://localhost:3005';
+async function apiFetch(path: string, options: RequestInit = {}) {
+  const res = await fetch(API + path, { headers: { 'Content-Type': 'application/json' }, ...options });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
 
 interface MedicineTableProps {
   initialSearch: string;
@@ -92,36 +98,20 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch, onUploadCl
   // Fixed type for bulkEditValues to ensure status matches Medicine['status'] union literal types
   const [bulkEditValues, setBulkEditValues] = useState<{ category?: string, status?: Medicine['status'], manufacturer?: string }>({});
 
-  // --- Local DB Integration ---
+  // --- Local SQLite API Integration ---
   const fetchMedicines = async () => {
     try {
-      const { data, error } = await supabase
-        .from('medicines')
-        .select('*')
-        .order('name', { ascending: true })
-        .range(0, 99999);
-
-      if (error) throw error;
-
-      if (data) {
-        setMedicines(data);
-      }
+      const data = await apiFetch('/api/medicines');
+      if (Array.isArray(data)) setMedicines(data);
     } catch (error) {
       console.error('Error fetching medicines:', error);
-      alert('Failed to load medicines');
     }
   };
 
-  // Re-fetch when upload finishes successfully
-  // The user might click 'Done' in the upload modal, but since ExcelUpload is a separate component here...
-  // Actually, we can listen for window events or just provide an interval for seamless demo sync.
   useEffect(() => {
     fetchMedicines();
-    
-    // Auto refresh every 5s to catch DB updates from ExcelUpload or bot
-    const interval = setInterval(() => {
-        fetchMedicines();
-    }, 5000);
+    // Auto-refresh every 5s to pick up CSV uploads & bot changes
+    const interval = setInterval(fetchMedicines, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -220,9 +210,7 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch, onUploadCl
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this medicine? This action cannot be undone.')) {
       try {
-        const { error } = await supabase.from('medicines').delete().eq('id', id);
-        if (error) throw error;
-
+        await apiFetch(`/api/medicines/${id}`, { method: 'DELETE' });
         setMedicines(prev => prev.filter(m => m.id !== id));
         const next = new Set(selectedIds);
         next.delete(id);
@@ -237,9 +225,7 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch, onUploadCl
   const handleBulkDelete = async () => {
     if (confirm(`Are you sure you want to delete ${selectedIds.size} medicines?`)) {
       try {
-        const { error } = await supabase.from('medicines').delete().in('id', Array.from(selectedIds));
-        if (error) throw error;
-
+        await apiFetch('/api/medicines', { method: 'DELETE', body: JSON.stringify({ ids: Array.from(selectedIds) }) });
         setMedicines(prev => prev.filter(m => !selectedIds.has(m.id)));
         setSelectedIds(new Set());
       } catch (error) {
@@ -253,53 +239,27 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch, onUploadCl
     e.preventDefault();
     if (!editingMedicine) return;
     const medData = editingMedicine as Medicine;
-    if (!medData.name || !medData.category_name) return; // Changed checks to match DB fields if needed, simplified here
+    if (!medData.name) return;
+
+    const payload = {
+      name: medData.name,
+      manufacturer: medData.manufacturer,
+      price: medData.price,
+      cost_price: medData.costPrice,
+      stock: medData.stock,
+      stock_status: (medData as any).stock_status || (medData.stock > 0 ? 'In Stock' : 'Out of Stock'),
+      generic_name: medData.category || (medData as any).generic_name,
+      package_size: medData.packageSize,
+      product_id: (medData as any).product_id || medData.batchNumber,
+    };
 
     try {
       if (isAdding) {
-        // Remove ID to let DB generate generic UUID or handle properly
-        const { id, ...newMedData } = medData;
-        // Need to map frontend "category" to "category_name" or "category_id"
-        // For now we assume category_name is what we have in frontend "category" field.
-        // But wait, the schema has category_id AND category_name.
-        // User prompt says "give me complete...". 
-        // The previous code used 'category' which doesn't exist in my new schema types effectively?
-        // Let's adjust the state to match DB fields better.
-        // Actually I need to map frontend fields to DB fields.
-
-        const payload = {
-          name: medData.name,
-          manufacturer: medData.manufacturer,
-          price: medData.price,
-          cost_price: medData.costPrice,
-          stock: medData.stock,
-          reorder_level: medData.reorderLevel,
-          package_size: medData.packageSize,
-          batch_number: medData.batchNumber,
-          expiry_date: medData.expiryDate,
-          image_url: medData.imageUrl || `https://picsum.photos/seed/${medData.name}/200/200`
-        };
-
-        const { data, error } = await supabase.from('medicines').insert([payload]).select().single();
-        if (error) throw error;
-        setMedicines(prev => [data, ...prev]);
+        const saved = await apiFetch('/api/medicines', { method: 'POST', body: JSON.stringify(payload) });
+        await fetchMedicines();
       } else {
-        const payload = {
-          name: medData.name,
-          manufacturer: medData.manufacturer,
-          price: medData.price,
-          cost_price: medData.costPrice, // camelCase in DB: cost_price
-          stock: medData.stock,
-          reorder_level: medData.reorderLevel, // reorder_level
-          package_size: medData.packageSize, // package_size
-          batch_number: medData.batchNumber, // batch_number
-          expiry_date: medData.expiryDate, // expiry_date
-        };
-
-        const { data, error } = await supabase.from('medicines').update(payload).eq('id', medData.id).select().single();
-        if (error) throw error;
-
-        setMedicines(prev => prev.map(m => m.id === medData.id ? data : m));
+        await apiFetch(`/api/medicines/${medData.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+        await fetchMedicines();
       }
       setIsEditing(false);
       setIsAdding(false);
@@ -314,20 +274,23 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch, onUploadCl
   const handleBulkUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const updates: any = {};
-      // category_name no longer exists in DB, handle categories properly if needed later.
-      if (bulkEditValues.manufacturer) updates.manufacturer = bulkEditValues.manufacturer;
-      // status is generated in DB, so we can't update it directly usually, but if we updated stock it would change.
-      // The bulk edit UI allows status override? Schema says GENERATED ALWAYS. So we CANNOT update status directly.
-      // We will ignore status updates for now or map them to stock changes? 
-      // For now, let's just update valid fields.
-
-      const { error } = await supabase.from('medicines').update(updates).in('id', Array.from(selectedIds));
-      if (error) throw error;
-
-      // Optimistic update or refresh
-      fetchMedicines();
-
+      // Apply updates one by one via PUT
+      for (const id of Array.from(selectedIds)) {
+        const existing = medicines.find(m => m.id === id);
+        if (!existing) continue;
+        const payload: any = {
+          name: existing.name,
+          manufacturer: bulkEditValues.manufacturer || existing.manufacturer,
+          price: existing.price,
+          cost_price: existing.costPrice,
+          stock: existing.stock,
+          stock_status: bulkEditValues.status || (existing as any).stock_status || 'In Stock',
+          generic_name: (existing as any).generic_name,
+          package_size: existing.packageSize,
+        };
+        await apiFetch(`/api/medicines/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      }
+      await fetchMedicines();
       setIsBulkEditing(false);
       setSelectedIds(new Set());
       setBulkEditValues({});
@@ -818,7 +781,7 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch, onUploadCl
                         <span className="text-xs font-bold text-slate-400">{(currentPage - 1) * itemsPerPage + idx + 1}</span>
                       </td>
                       <td className="px-4 py-6">
-                        <span className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase">{med.batchNumber}</span>
+                        <span className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase">{(med as any).product_id || med.batchNumber || '—'}</span>
                       </td>
                       <td className="px-6 py-6">
                         <div className="flex items-center gap-4">
@@ -841,10 +804,15 @@ const MedicineTable: React.FC<MedicineTableProps> = ({ initialSearch, onUploadCl
                         <div className="text-sm font-black text-emerald-500 font-mono">Rs.{med.price.toLocaleString()}</div>
                       </td>
                       <td className="px-4 py-6">
-                        <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-2xl border text-[9px] font-black uppercase tracking-[0.15em] shadow-sm ${getStatusStyles(med.status)}`}>
-                          {getStatusIcon(med.status)}
-                          {med.status}
-                        </div>
+                        {(() => {
+                          const s = (med as any).stock_status || med.status || 'In Stock';
+                          return (
+                            <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-2xl border text-[9px] font-black uppercase tracking-[0.15em] shadow-sm ${getStatusStyles(s)}`}>
+                              {getStatusIcon(s)}
+                              {s}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-6">
                         <div className="flex items-center justify-center gap-2">

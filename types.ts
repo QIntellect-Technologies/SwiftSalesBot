@@ -1,22 +1,25 @@
 
 export interface Medicine {
   id: string;
+  product_id: string; // New: unique internal ID
   name: string;
   price: number;
-  costPrice: number; // Mapped from cost_price
-  packageSize: string; // Mapped from package_size
+  cost_price: number; // DB field
+  costPrice: number; // Frontend legacy
+  package_size: string; // DB field
+  packageSize: string; // Frontend legacy
   stock: number;
-  reorderLevel: number; // Mapped from reorder_level
+  stock_status: 'In Stock' | 'Out of Stock'; // New DB field
+  status: 'In Stock' | 'Low Stock' | 'Out of Stock'; // Frontend legacy
+  reorderLevel: number;
   manufacturer: string;
-  expiryDate: string; // Mapped from expiry_date
-  batchNumber: string; // Mapped from batch_number
-  category: string; // Legacy frontend field
-  category_name?: string; // DB field
-  categoryId?: string; // category_id in DB
-  status: 'In Stock' | 'Low Stock' | 'Out of Stock';
-  lastUpdated: string; // last_updated in DB? No, created_at/updated_at. Handled in frontend logic.
-  imageUrl?: string; // image_url
-  salesVolume?: number; // sales_volume
+  expiryDate: string;
+  batchNumber: string;
+  generic_name?: string; // DB field (mapped to Category in CSV)
+  category: string; 
+  category_name?: string;
+  categoryId?: string;
+  imageUrl?: string;
 }
 
 export interface Category {
