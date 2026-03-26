@@ -86,7 +86,7 @@ async function searchMedicine(queryText) {
             FROM medicines m 
             LEFT JOIN categories c ON m.category_id = c.id
             WHERE m.name LIKE ? OR m.generic_name LIKE ? OR m.manufacturer LIKE ?
-            LIMIT 5
+            LIMIT 10
         `;
         let rows = await db.all(query, [pattern, pattern, pattern]);
 
@@ -221,7 +221,7 @@ async function createOrder(orderData) {
 async function getOrdersByPhone(phone) {
     try {
         const query = `
-            SELECT order_number, customer_name, total_amount, status, created_at, delivery_address 
+            SELECT id, order_number, customer_name, total_amount, status, created_at, delivery_address 
             FROM orders 
             WHERE customer_phone = ? 
             ORDER BY created_at DESC 
@@ -235,12 +235,24 @@ async function getOrdersByPhone(phone) {
     }
 }
 
+async function updateOrderStatus(orderIdOrNumber, status) {
+    try {
+        const query = `UPDATE orders SET status = ? WHERE id = ? OR order_number = ?`;
+        await db.run(query, [status, orderIdOrNumber, orderIdOrNumber]);
+        return true;
+    } catch (error) {
+        console.error('Error updating order status:', error.message);
+        return false;
+    }
+}
+
 module.exports = {
     listCategories,
     searchMedicine,
     getMedicineById,
     createOrder,
     getOrdersByPhone,
+    updateOrderStatus,
     listCompanies,
     getSubstitutions,
     getMultiProductContext,

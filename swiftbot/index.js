@@ -297,6 +297,11 @@ async function processIncomingMessage(from, text, metadata = {}) {
             } else if (a.type === 'CLEAR_CART') {
                 clearCart(from);
                 cart = [];
+            } else if (a.type === 'REMOVE_FROM_CART') {
+                cart = cart.filter(item => item.product_id != a.product_id);
+                updateSession(from, { cart });
+            } else if (a.type === 'UPDATE_ORDER_STATUS') {
+                await updateOrderStatus(a.order_id || a.order_number, a.status);
             } else if (a.type === 'PLACE_ORDER') {
                 const totalAmount = cart.reduce((sum, item) => sum + item.subtotal, 0);
                 orderPlacedResult = await createOrder({
