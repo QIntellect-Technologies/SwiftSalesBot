@@ -411,27 +411,29 @@ async function processIncomingMessage(from, text, metadata = {}) {
         cleanReply = `💊 *${ragData.company} - ${ragData.category}*\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nPlease select a medicine:\n\n${prodList}`;
     }
 
-    let buttons = [];
-    if (aiSuggestedButtons.length > 0 && session.current_step !== 'medicine_list_view') {
-        buttons = aiSuggestedButtons.slice(0, 3).map(b => ({ 
-            id: b.id || 'btn_ai', 
-            title: b.title.substring(0, 20) 
-        }));
+    let buttons = aiSuggestedButtons.slice(0, 3).map(b => ({ 
+        id: b.id || 'btn_ai', 
+        title: b.title.substring(0, 20) 
+    }));
+
+    // Safety Net: Always ensure "Medicine List" is available during discovery/ordering
+    const hasMedList = buttons.some(b => b.id === 'btn_medicine_list');
+    if (!hasMedList && buttons.length < 3 && session.current_step !== 'medicine_list_view' && session.current_step !== 'order_placed') {
+        buttons.push({ id: 'btn_medicine_list', title: '💊 Medicine List' });
     }
-    else {
+
+    if (buttons.length === 0) {
         const lowerReply = cleanReply.toLowerCase();
-        if (session.current_step === 'main_menu' || lowerReply.includes('welcome to swift sale') || lowerReply.includes('how can i assist') || lowerReply.includes('how can i help')) {
+        if (session.current_step === 'main_menu' || lowerReply.includes('welcome') || lowerReply.includes('assist') || lowerReply.includes('help')) {
             buttons = [{ id: 'btn_medicine_list', title: '💊 Medicine List' }, { id: 'btn_about', title: 'ℹ️ About Us' }];
         } else if (session.current_step === 'medicine_list_view') {
             const baseUrl = process.env.RAILWAY_STATIC_URL || 'swift-sales-panel-production.up.railway.app';
             cleanReply += `\n\n📄 *Download Link:*\nhttps://${baseUrl}/api/inventory/download`;
             buttons = [{ id: 'btn_back', title: '🔙 Back' }];
-        } else if (lowerReply.includes('welcome') || lowerReply.includes('how can i help')) {
-            buttons = [{ id: 'btn_products', title: '🛍️ Browse Products' }, { id: 'btn_about', title: 'ℹ️ About Us' }];
+        } else {
+            buttons = [{ id: 'btn_medicine_list', title: '💊 Medicine List' }, { id: 'btn_main_menu', title: '🏠 Main Menu' }];
         }
     }
-
-    if (buttons.length === 0) buttons.push({ id: 'btn_main_menu', title: '🏠 Main Menu' });
 
     await sendMessage(from, `${cleanReply}\n\n◌${PROCESS_ID}`, buttons.slice(0, 3));
 }
