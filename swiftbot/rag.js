@@ -218,11 +218,29 @@ async function createOrder(orderData) {
     }
 }
 
+async function getOrdersByPhone(phone) {
+    try {
+        const query = `
+            SELECT order_number, customer_name, total_amount, status, created_at, delivery_address 
+            FROM orders 
+            WHERE customer_phone = ? 
+            ORDER BY created_at DESC 
+            LIMIT 5
+        `;
+        const rows = await db.all(query, [phone]);
+        return rows;
+    } catch (error) {
+        console.error('Error fetching orders by phone:', error.message);
+        return [];
+    }
+}
+
 module.exports = {
     listCategories,
     searchMedicine,
     getMedicineById,
     createOrder,
+    getOrdersByPhone,
     listCompanies,
     getSubstitutions,
     getMultiProductContext,

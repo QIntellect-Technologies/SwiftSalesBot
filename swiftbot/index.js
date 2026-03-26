@@ -239,25 +239,40 @@ async function processIncomingMessage(from, text, metadata = {}) {
     else if (metadata.button_id === 'btn_medicine_list') {
         Object.assign(session, updateSession(from, { current_step: 'medicine_list_view' }));
     }
-    // 3. Search (Enhanced for Multi-Product or Single Search)
+    // 3. Search (Enhanced for Multi-Product or Single Search) & Order Tracking
     else {
-        const separators = /[\,&\+]|\band\b/gi;
-        const potentialProducts = text.split(separators).map(p => p.trim()).filter(p => p.length > 2);
-        
-        let searchResults = [];
-        if (potentialProducts.length > 1) {
-            searchResults = await getMultiProductContext(potentialProducts);
+        // --- ULTIMATE AGENT: ORDER STATUS LOOKUP ---
+        if (normalizedText.includes('order status') || normalizedText.includes('where is my order') || normalizedText.includes('track')) {
+            const orders = await getOrdersByPhone(from);
+            ragData = { query_type: 'order_history', retrieved_data: orders };
         } else {
-            searchResults = await searchMedicine(text);
-            // If out of stock, attach substitutions
-            if (searchResults.length === 1 && searchResults[0].stock_qty <= 0) {
-                searchResults[0].substitutions = await getSubstitutions(searchResults[0].generic_name, searchResults[0].product_id);
+            const separators = /[\,&\+]|\band\b/gi;
+            const potentialProducts = text.split(separators).map(p => p.trim()).filter(p => p.length > 2);
+            
+            let searchResults = [];
+            if (potentialProducts.length > 1) {
+                searchResults = await getMultiProductContext(potentialProducts);
+            } else {
+                searchResults = await searchMedicine(text);
+                // If out of stock, attach substitutions
+                if (searchResults.length === 1 && searchResults[0].stock_qty <= 0) {
+                    searchResults[0].substitutions = await getSubstitutions(searchResults[0].generic_name, searchResults[0].product_id);
+                }
+            }
+
+            if (searchResults.length > 0) {
+                ragData = { query_type: 'product_context', retrieved_data: searchResults };
             }
         }
+    }
 
-        if (searchResults.length > 0) {
-            ragData = { query_type: 'product_context', retrieved_data: searchResults };
-        }
+    // --- ULTIMATE AGENT: LONG-TERM MEMORY INJECTION ---
+    const pastOrders = await getOrdersByPhone(from);
+    if (pastOrders.length > 0) {
+        ragData.customer_history = pastOrders.map(o => `Order ${o.order_number}: ${o.status} (${o.created_at})`).join(' | ');
+        // Auto-fill session if not set
+        if (!session.customer_name) session.customer_name = pastOrders[0].customer_name;
+        if (!session.delivery_address) session.delivery_address = pastOrders[0].delivery_address;
     }
 
     // AI Generation
