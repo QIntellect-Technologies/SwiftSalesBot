@@ -11,6 +11,8 @@ const {
     searchMedicine,
     getMedicineById,
     createOrder,
+    getOrdersByPhone,
+    updateOrderStatus,
     listCompanies,
     getSubstitutions,
     getMultiProductContext,
