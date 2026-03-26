@@ -412,7 +412,7 @@ async function processIncomingMessage(from, text, metadata = {}) {
     }
 
     let buttons = [];
-    if (aiSuggestedButtons.length > 0 && session.current_step !== 'main_menu' && session.current_step !== 'medicine_list_view') {
+    if (aiSuggestedButtons.length > 0 && session.current_step !== 'medicine_list_view') {
         buttons = aiSuggestedButtons.slice(0, 3).map(b => ({ 
             id: b.id || 'btn_ai', 
             title: b.title.substring(0, 20) 
