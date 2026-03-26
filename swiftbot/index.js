@@ -12,6 +12,8 @@ const {
     getMedicineById,
     createOrder,
     listCompanies,
+    getSubstitutions,
+    getMultiProductContext,
     getCategoriesByCompany,
     getProductsByCompanyAndCategory
 } = require('./rag');
@@ -349,11 +351,25 @@ async function processIncomingMessage(from, text, metadata = {}) {
         ragData = { query_type: 'about_us', retrieved_data: [{ company: "Swift Sales Medicine Distributor", location: "Sardar Colony, Rahim Yar Khan", specialty: "Exclusive distributor for Shrooq, Avant, Swiss IQ, Star, and Ospheric Pharma." }] };
         Object.assign(session, updateSession(from, { current_step: 'viewing_about' }));
     }
-    // 5. Default: Search
+    // 5. Default: Search (Enhanced for Multi-Product)
     else {
-        const searchResults = await searchMedicine(text);
+        // Split by "and", ",", "&", or "+" to identify multiple product mentions
+        const separators = /[\,&\+]|\band\b/gi;
+        const potentialProducts = text.split(separators).map(p => p.trim()).filter(p => p.length > 2);
+        
+        let searchResults = [];
+        if (potentialProducts.length > 1) {
+            searchResults = await getMultiProductContext(potentialProducts);
+        } else {
+            searchResults = await searchMedicine(text);
+            // If out of stock, attach substitutions
+            if (searchResults.length === 1 && searchResults[0].stock_qty <= 0) {
+                searchResults[0].substitutions = await getSubstitutions(searchResults[0].generic_name, searchResults[0].product_id);
+            }
+        }
+
         if (searchResults.length > 0) {
-            ragData = { query_type: 'product_search', retrieved_data: searchResults };
+            ragData = { query_type: 'product_search_multi', retrieved_data: searchResults };
             Object.assign(session, updateSession(from, { last_products: searchResults }));
         }
     }

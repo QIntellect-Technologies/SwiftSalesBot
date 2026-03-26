@@ -80,15 +80,28 @@ async function getProductsByCompanyAndCategory(companyName, categoryOrId, page =
 
 async function searchMedicine(queryText) {
     try {
+        const pattern = `%${queryText.trim()}%`;
         const query = `
-            SELECT m.*, c.name as category_name 
+            SELECT m.*, COALESCE(c.name, m.generic_name, 'General') as category_name 
             FROM medicines m 
-            JOIN categories c ON m.category_id = c.id
-            WHERE m.name LIKE ? OR m.generic_name LIKE ?
+            LEFT JOIN categories c ON m.category_id = c.id
+            WHERE m.name LIKE ? OR m.generic_name LIKE ? OR m.manufacturer LIKE ?
             LIMIT 5
         `;
-        const pattern = `%${queryText}%`;
-        const rows = await db.all(query, [pattern, pattern]);
+        let rows = await db.all(query, [pattern, pattern, pattern]);
+
+        // Fallback: If no results, try extracting keywords (excluding common words)
+        if (rows.length === 0 && queryText.length > 3) {
+            const keywords = queryText.toLowerCase()
+                .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
+                .split(/\s+/)
+                .filter(w => w.length > 2 && !['need', 'want', 'please', 'give', 'have', 'packets', 'units', 'boxes', 'order'].includes(w));
+            
+            if (keywords.length > 0) {
+                const keywordPattern = `%${keywords[0]}%`;
+                rows = await db.all(query, [keywordPattern, keywordPattern, keywordPattern]);
+            }
+        }
         
         return rows.map(med => ({
             product_id: med.id,
@@ -139,6 +152,44 @@ async function getMedicineById(productId) {
     }
 }
 
+async function getSubstitutions(genericName, excludeId) {
+    try {
+        const query = `
+            SELECT m.*, COALESCE(c.name, m.generic_name, 'General') as category_name 
+            FROM medicines m 
+            LEFT JOIN categories c ON m.category_id = c.id
+            WHERE m.generic_name = ? AND m.id != ? AND m.stock > 0
+            LIMIT 3
+        `;
+        const rows = await db.all(query, [genericName, excludeId]);
+        return rows.map(med => ({
+            product_id: med.id,
+            name: med.name,
+            manufacturer: med.manufacturer,
+            price: med.price,
+            stock_status: 'Available'
+        }));
+    } catch (error) {
+        console.error('Error fetching substitutions:', error.message);
+        return [];
+    }
+}
+
+async function getMultiProductContext(productNames) {
+    const results = [];
+    for (const name of productNames) {
+        const matches = await searchMedicine(name);
+        if (matches.length > 0) {
+            const bestMatch = matches[0];
+            if (bestMatch.stock_qty <= 0) {
+                bestMatch.substitutions = await getSubstitutions(bestMatch.generic_name, bestMatch.product_id);
+            }
+            results.push(bestMatch);
+        }
+    }
+    return results;
+}
+
 async function createOrder(orderData) {
     try {
         const orderNumber = `SW-${Date.now().toString().slice(-6)}`;
@@ -173,6 +224,8 @@ module.exports = {
     getMedicineById,
     createOrder,
     listCompanies,
+    getSubstitutions,
+    getMultiProductContext,
     getCategoriesByCompany,
     getProductsByCompanyAndCategory
 };
