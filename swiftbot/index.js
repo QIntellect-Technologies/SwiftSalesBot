@@ -237,9 +237,19 @@ async function processIncomingMessage(from, text, metadata = {}) {
         const companies = await listCompanies();
         ragData = { query_type: 'discovery', retrieved_data: companies };
     }
-    // 2. Medicine List View
-    else if (metadata.button_id === 'btn_medicine_list') {
-        Object.assign(session, updateSession(from, { current_step: 'medicine_list_view' }));
+    // 2. Medicine List View — ALWAYS deliver CSV link immediately, no AI needed
+    else if (metadata.button_id === 'btn_medicine_list' || normalizedText === 'medicine list' || normalizedText === '💊 medicine list') {
+        const baseUrl = process.env.RAILWAY_STATIC_URL || 'swiftsalesbot-production.up.railway.app';
+        const csvUrl = `https://${baseUrl}/api/inventory/download`;
+        const reply = `📄 *Swift Sales — Complete Medicine List*\n\nBrowse our full inventory of medicines, prices, and stock below:\n\n🔗 ${csvUrl}\n\nOnce you've browsed, just type the medicine name and I'll handle the rest!\n\n◌${PROCESS_ID}`;
+        const listButtons = [
+            { id: 'btn_about', title: 'ℹ️ About Us' },
+            { id: 'btn_contact', title: '📞 Contact Agent' }
+        ];
+        await sendMessage(from, reply, listButtons);
+        addToHistory(from, 'user', text);
+        addToHistory(from, 'assistant', `📄 Medicine list CSV link sent: ${csvUrl}`);
+        return; // Short-circuit, don't go to AI
     }
     // 3. Search (Enhanced for Multi-Product or Single Search) & Order Tracking
     else {
