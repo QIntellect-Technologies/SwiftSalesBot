@@ -228,10 +228,10 @@ async function processIncomingMessage(from, text, metadata = {}) {
     // 1. Check for Greeting or Navigation
     const greetingRegex = /^(hi|hello|hey|start|menu|help|hii|helo|hay|hllo)/i;
     if (normalizedText.match(greetingRegex) || metadata.button_id === 'btn_main_menu' || metadata.button_id === 'btn_back') {
-        updateSession(from, { current_step: 'main_menu' });
+        Object.assign(session, updateSession(from, { current_step: 'main_menu' }));
     }
     else if (metadata.button_id === 'btn_medicine_list') {
-        updateSession(from, { current_step: 'medicine_list_view' });
+        Object.assign(session, updateSession(from, { current_step: 'medicine_list_view' }));
     }
     // 2. Company/Product Browsing
     else if (normalizedText.includes('browse products') || normalizedText.includes('list companies') || metadata.button_id === 'btn_products' || metadata.button_id === 'btn_companies' || metadata.button_id === 'btn_add_more') {
@@ -239,11 +239,11 @@ async function processIncomingMessage(from, text, metadata = {}) {
         if (metadata.button_id === 'btn_add_more' && companyName) {
             const categories = await getCategoriesByCompany(companyName);
             ragData = { query_type: 'category_list_filtered', company: companyName, retrieved_data: categories };
-            updateSession(from, { current_step: 'browsing_categories_filtered', last_categories: categories });
+            Object.assign(session, updateSession(from, { current_step: 'browsing_categories_filtered', last_categories: categories }));
         } else {
             const companies = await listCompanies();
             ragData = { query_type: 'company_list', retrieved_data: companies };
-            updateSession(from, { current_step: 'browsing_companies', last_companies: companies });
+            Object.assign(session, updateSession(from, { current_step: 'browsing_companies', last_companies: companies }));
         }
     }
     else if (session.current_step === 'browsing_companies') {
@@ -261,7 +261,7 @@ async function processIncomingMessage(from, text, metadata = {}) {
         if (companyName) {
             const categories = await getCategoriesByCompany(companyName);
             ragData = { query_type: 'category_list_filtered', company: companyName, retrieved_data: categories };
-            updateSession(from, { current_step: 'browsing_categories_filtered', selected_company: companyName, last_categories: categories });
+            Object.assign(session, updateSession(from, { current_step: 'browsing_categories_filtered', selected_company: companyName, last_categories: categories }));
         }
     }
     else if (session.current_step === 'browsing_categories_filtered') {
@@ -281,7 +281,7 @@ async function processIncomingMessage(from, text, metadata = {}) {
         if (selectedCat) {
             const products = await getProductsByCompanyAndCategory(session.selected_company, selectedCat.name, 1);
             ragData = { query_type: 'product_list', category: selectedCat.name, company: session.selected_company, retrieved_data: products };
-            updateSession(from, { current_step: 'browsing_products', last_category: selectedCat.name, last_products: products, last_page: 1 });
+            Object.assign(session, updateSession(from, { current_step: 'browsing_products', last_category: selectedCat.name, last_products: products, last_page: 1 }));
         }
     }
     else if (session.current_step === 'browsing_products') {
@@ -300,7 +300,7 @@ async function processIncomingMessage(from, text, metadata = {}) {
         const product = products.find(p => p.product_id == prodId);
         if (product) {
             ragData = { query_type: 'product_details', retrieved_data: [product] };
-            updateSession(from, { current_step: 'awaiting_quantity', selected_product: product });
+            Object.assign(session, updateSession(from, { current_step: 'awaiting_quantity', selected_product: product }));
         }
     }
     // 3. Ordering Flow
@@ -309,27 +309,27 @@ async function processIncomingMessage(from, text, metadata = {}) {
         const product = session.selected_product;
         if (product && qty > 0) {
             const updatedCart = [...session.cart, { product_id: product.product_id, product_name: product.name, quantity: qty, unit_price: product.price_unit, subtotal: qty * product.price_unit }];
-            updateSession(from, { cart: updatedCart, current_step: 'cart_updated' });
+            Object.assign(session, updateSession(from, { cart: updatedCart, current_step: 'cart_updated' }));
             ragData = { query_type: 'cart_update', retrieved_data: updatedCart };
         }
     }
     else if (normalizedText.match(/place order|confirm order|checkout/) || metadata.button_id === 'btn_checkout') {
         if (session.cart.length > 0) {
-            updateSession(from, { current_step: 'awaiting_name' });
+            Object.assign(session, updateSession(from, { current_step: 'awaiting_name' }));
             ragData = { query_type: 'order_flow', step: 'name_request' };
         }
     }
     else if (session.current_step === 'awaiting_name' && normalizedText.length > 2) {
-        updateSession(from, { current_step: 'awaiting_phone', customer_name_real: text });
+        Object.assign(session, updateSession(from, { current_step: 'awaiting_phone', customer_name_real: text }));
         ragData = { query_type: 'order_flow', step: 'phone_request', name: text };
     }
     else if (session.current_step === 'awaiting_phone' && normalizedText.replace(/\D/g, '').length >= 10) {
-        updateSession(from, { current_step: 'awaiting_address', customer_phone: text });
+        Object.assign(session, updateSession(from, { current_step: 'awaiting_address', customer_phone: text }));
         ragData = { query_type: 'order_flow', step: 'address_request', phone: text };
     }
     else if (session.current_step === 'awaiting_address' && normalizedText.length > 5) {
         const fullDetails = `${session.customer_name_real}, ${session.customer_phone}, ${text}`;
-        updateSession(from, { current_step: 'confirming_order', delivery_address: fullDetails });
+        Object.assign(session, updateSession(from, { current_step: 'confirming_order', delivery_address: fullDetails }));
         ragData = { query_type: 'order_flow', step: 'final_confirmation', details: fullDetails };
     }
     else if (metadata.button_id === 'btn_place_order_now') {
@@ -337,20 +337,20 @@ async function processIncomingMessage(from, text, metadata = {}) {
         if (orderResult) {
             ragData = { query_type: 'order_success', order_number: orderResult.order_number };
             clearCart(from);
-            updateSession(from, { current_step: 'order_placed' });
+            Object.assign(session, updateSession(from, { current_step: 'order_placed' }));
         }
     }
     // 4. About Us
     else if (normalizedText.includes('about us') || metadata.button_id === 'btn_about') {
         ragData = { query_type: 'about_us', retrieved_data: [{ company: "Swift Sales Medicine Distributor", location: "Sardar Colony, Rahim Yar Khan", specialty: "Exclusive distributor for Shrooq, Avant, Swiss IQ, Star, and Ospheric Pharma." }] };
-        updateSession(from, { current_step: 'viewing_about' });
+        Object.assign(session, updateSession(from, { current_step: 'viewing_about' }));
     }
     // 5. Default: Search
     else {
         const searchResults = await searchMedicine(text);
         if (searchResults.length > 0) {
             ragData = { query_type: 'product_search', retrieved_data: searchResults };
-            updateSession(from, { last_products: searchResults });
+            Object.assign(session, updateSession(from, { last_products: searchResults }));
         }
     }
 
