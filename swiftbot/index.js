@@ -7,7 +7,6 @@ require('dotenv').config();
 
 const {
     listCategories,
-    getProductsByCategory,
     searchMedicine,
     getMedicineById,
     createOrder,
