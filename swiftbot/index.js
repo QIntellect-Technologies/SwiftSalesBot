@@ -24,14 +24,6 @@ const { sendMessage } = require('./whatsapp');
 const { getSession, updateSession, addToHistory, addOrderToHistory, clearCart } = require('./memory');
 
 const app = express();
-
-// --- GLOBAL DEBUGGER (MOVE TO ABSOLUTE TOP) ---
-app.use((req, res, next) => {
-    const timestamp = new Date().toISOString();
-    console.log(`[GLOBAL-TRACE] ${timestamp} | ${req.method} ${req.url} | IP: ${req.ip}`);
-    next();
-});
-
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 app.use(cors());
@@ -50,7 +42,11 @@ REQUIRED_ENV.forEach(key => {
 });
 
 // Global logger
-// (Removed from here - moved to top)
+app.use((req, res, next) => {
+    const timestamp = new Date().toISOString();
+    console.error(`[CRITICAL-TRACE] ${timestamp} - ${req.method} ${req.url}`);
+    next();
+});
 
 const PORT = process.env.PORT || 3005;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'swift_sales_token';
@@ -167,15 +163,6 @@ app.post(['/', '/wati/webhook'], async (req, res) => {
 const WHAPI_PROCESSED_IDS = new Set();
 const WHAPI_LAST_MESSAGES = new Map();
 
-app.get('/whapi/webhook', (req, res) => {
-    console.log('[WHAPI-VERIFY] Whapi verification GET received');
-    res.status(200).send('OK');
-});
-
-app.get('/test-sanity', (req, res) => {
-    res.json({ status: 'up', time: new Date().toISOString(), env: { provider: process.env.WHATSAPP_PROVIDER } });
-});
-
 app.post('/whapi/webhook', async (req, res) => {
     console.error(`[WHAPI-TRACE] Incoming POST /whapi/webhook | Body Keys: ${Object.keys(req.body)}`);
     const body = req.body;
@@ -245,14 +232,16 @@ async function processIncomingMessage(from, text, metadata = {}) {
     // --- PURE AGENT DISCOVERY LOGIC (NO HARDCODING) ---
     let searchResults = await getBroadContext(text);
     let type = 'search_results';
+    let status = 'RESULTS_FOUND';
 
     if (searchResults.length === 0) {
-        // If search returned nothing, provide a discovery sample so the AI knows we have products
+        // If search returned nothing, provide a discovery sample but CLEARLY flag the search as failed
         searchResults = await getDiscoveryContext();
         type = 'discovery_context';
+        status = 'SEARCH_FAILED_FOR_USER_QUERY_SHOWING_RANDOM_SAMPLES';
     }
 
-    ragData = { query_type: type, retrieved_data: searchResults };
+    ragData = { query_type: type, status: status, retrieved_data: searchResults };
 
     // AI Generation
     let aiPrompt = text;
