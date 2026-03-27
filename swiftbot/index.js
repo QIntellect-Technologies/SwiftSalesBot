@@ -232,16 +232,14 @@ async function processIncomingMessage(from, text, metadata = {}) {
     // --- PURE AGENT DISCOVERY LOGIC (NO HARDCODING) ---
     let searchResults = await getBroadContext(text);
     let type = 'search_results';
-    let status = 'RESULTS_FOUND';
 
     if (searchResults.length === 0) {
-        // If search returned nothing, provide a discovery sample but CLEARLY flag the search as failed
+        // If search returned nothing, provide a discovery sample so the AI knows we have products
         searchResults = await getDiscoveryContext();
         type = 'discovery_context';
-        status = 'SEARCH_FAILED_FOR_USER_QUERY_SHOWING_RANDOM_SAMPLES';
     }
 
-    ragData = { query_type: type, status: status, retrieved_data: searchResults };
+    ragData = { query_type: type, retrieved_data: searchResults };
 
     // AI Generation
     let aiPrompt = text;
