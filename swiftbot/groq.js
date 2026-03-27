@@ -39,9 +39,7 @@ RAG_CONTEXT: ${JSON.stringify(ragData, null, 2)}
     const messages = [
         {
             role: 'system',
-            content: prompt + `\n\nCRITICAL: If the user provides a product name and quantity (e.g., "I want 4 Panadol"), you MUST trigger the ADD_TO_CART action immediately.
-Include a JSON array inside <ACTIONS> tags at the very end of your response.
-Example: <ACTIONS>[{"type": "ADD_TO_CART", "product_id": "...", "product_name": "...", "quantity": 4, "price": ...}]</ACTIONS>`
+            content: prompt
         },
         { role: 'system', content: contextInjection },
         ...session.history.slice(-20),
