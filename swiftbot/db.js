@@ -1,3 +1,5 @@
+const { DatabaseSync } = require('node:sqlite');
+const path = require('path');
 const fs = require('fs');
 
 const dataDir = path.join(__dirname, 'data');
