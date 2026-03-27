@@ -239,22 +239,9 @@ async function processIncomingMessage(from, text, metadata = {}) {
     else if (metadata.button_id === 'btn_medicine_list') {
         Object.assign(session, updateSession(from, { current_step: 'medicine_list_view' }));
     }
-    // 3. Search (Enhanced for Multi-Product or Single Search)
+    // 3. Natural Language Search (Pure Agent style)
     else {
-        const separators = /[\,&\+]|\band\b/gi;
-        const potentialProducts = text.split(separators).map(p => p.trim()).filter(p => p.length > 2);
-        
-        let searchResults = [];
-        if (potentialProducts.length > 1) {
-            searchResults = await getMultiProductContext(potentialProducts);
-        } else {
-            searchResults = await searchMedicine(text);
-            // If out of stock, attach substitutions
-            if (searchResults.length === 1 && searchResults[0].stock_qty <= 0) {
-                searchResults[0].substitutions = await getSubstitutions(searchResults[0].generic_name, searchResults[0].product_id);
-            }
-        }
-
+        const searchResults = await getBroadContext(text);
         ragData = { query_type: 'search_results', retrieved_data: searchResults };
     }
 

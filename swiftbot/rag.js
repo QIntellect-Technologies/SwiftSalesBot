@@ -218,6 +218,60 @@ async function createOrder(orderData) {
     }
 }
 
+async function getBroadContext(message) {
+    try {
+        const text = (message || "").toLowerCase().trim();
+        // Extract keywords: 3+ chars long, not in exclusion list
+        const exclusionList = [
+            'need', 'want', 'please', 'give', 'have', 'packets', 'units', 'boxes', 'order', 
+            'add', 'buy', 'purchase', 'total', 'price', 'cost', 'how', 'much', 'many',
+            'for', 'and', 'with', 'the', 'some', 'any'
+        ];
+        
+        const keywords = text
+            .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, " ")
+            .split(/\s+/)
+            .filter(w => w.length >= 3 && !exclusionList.includes(w));
+        
+        if (keywords.length === 0) return [];
+
+        const results = [];
+        const seenIds = new Set();
+
+        for (const kw of keywords.slice(0, 5)) { // Limit to 5 keyword searches for speed
+            const pattern = `%${kw}%`;
+            const rows = await db.all(`
+                SELECT m.*, COALESCE(c.name, m.generic_name, 'General') as category_name 
+                FROM medicines m 
+                LEFT JOIN categories c ON m.category_id = c.id
+                WHERE m.name LIKE ? OR m.generic_name LIKE ? OR m.manufacturer LIKE ?
+                LIMIT 3
+            `, [pattern, pattern, pattern]);
+
+            for (const med of rows) {
+                if (!seenIds.has(med.id)) {
+                    seenIds.add(med.id);
+                    results.push({
+                        product_id: med.id,
+                        name: med.name,
+                        generic_name: med.generic_name || '',
+                        category: med.category_name || 'Medicines',
+                        manufacturer: med.manufacturer || 'Swift Sales',
+                        pack_size: med.package_size || 'Unit',
+                        price_unit: med.price || 0,
+                        stock_qty: med.stock || 0,
+                        stock_status: med.stock > 0 ? 'Available' : 'Out of Stock'
+                    });
+                }
+            }
+        }
+        return results;
+    } catch (error) {
+        console.error('Error fetching broad context:', error.message);
+        return [];
+    }
+}
+
 module.exports = {
     listCategories,
     searchMedicine,
@@ -227,5 +281,6 @@ module.exports = {
     getSubstitutions,
     getMultiProductContext,
     getCategoriesByCompany,
-    getProductsByCompanyAndCategory
+    getProductsByCompanyAndCategory,
+    getBroadContext
 };
