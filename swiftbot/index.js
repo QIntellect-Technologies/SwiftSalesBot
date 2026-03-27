@@ -297,22 +297,10 @@ async function processIncomingMessage(from, text, metadata = {}) {
 
     let buttons = aiSuggestedButtons.slice(0, 3).map(b => ({ 
         id: b.id || 'btn_ai', 
-        title: b.title.substring(0, 20) 
+        title: (b.title || '').substring(0, 20) 
     }));
 
-    if (session.current_step === 'medicine_list_view') {
-        cleanReply = "You can view our complete medicine inventory by downloading the CSV file below.";
-        const baseUrl = process.env.RAILWAY_STATIC_URL || 'swiftsalesbot-production.up.railway.app';
-        cleanReply += `\n\n📄 *Download Link:*\nhttps://${baseUrl}/api/inventory/download`;
-        buttons = [{ id: 'btn_back', title: '🔙 Back' }];
-        Object.assign(session, updateSession(from, { current_step: 'browsing' })); // Reset for next message
-    } 
-
-    if (buttons.length === 0) {
-        buttons = [{ id: 'btn_medicine_list', title: '💊 Medicine List' }, { id: 'btn_about', title: 'ℹ️ About Us' }];
-    }
-
-    await sendMessage(from, cleanReply, buttons.slice(0, 3));
+    await sendMessage(from, aiReply, buttons);
 }
 
 // --- ADMIN API ROUTES ---
