@@ -229,22 +229,8 @@ async function processIncomingMessage(from, text, metadata = {}) {
     const normalizedText = (text || "").toLowerCase().trim();
 
     // --- PURE AGENT DISCOVERY LOGIC (NO HARDCODING) ---
-    const greetingRegex = /^(hi|hello|hey|start|menu|help|hii|helo|hay|hllo)/i;
-    
-    // 1. Initial Greeting or Main Menu (Fetch Company List for context)
-    if (normalizedText.match(greetingRegex) || metadata.button_id === 'btn_main_menu' || metadata.button_id === 'btn_back' || metadata.button_id === 'btn_companies' || metadata.button_id === 'btn_products') {
-        const companies = await listCompanies();
-        ragData = { query_type: 'discovery', retrieved_data: companies };
-    }
-    // 2. Medicine List View
-    else if (metadata.button_id === 'btn_medicine_list') {
-        Object.assign(session, updateSession(from, { current_step: 'medicine_list_view' }));
-    }
-    // 3. Natural Language Search (Pure Agent style)
-    else {
-        const searchResults = await getBroadContext(text);
-        ragData = { query_type: 'search_results', retrieved_data: searchResults };
-    }
+    const searchResults = await getBroadContext(text);
+    ragData = { query_type: 'search_results', retrieved_data: searchResults };
 
     // AI Generation
     let aiPrompt = text;

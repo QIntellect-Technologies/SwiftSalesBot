@@ -36,13 +36,19 @@ USER_SESSION: ${JSON.stringify({
 RAG_CONTEXT: ${JSON.stringify(ragData, null, 2)}
 `;
 
+    // Clean history of any metadata that might confuse the Pure Agent
+    const cleanHistory = session.history.slice(-20).map(h => ({
+        role: h.role,
+        content: h.content.replace(/<(ACTIONS|actions)>.*?<\/(ACTIONS|actions)>/si, '').trim()
+    }));
+
     const messages = [
         {
             role: 'system',
             content: prompt
         },
         { role: 'system', content: contextInjection },
-        ...session.history.slice(-20),
+        ...cleanHistory,
         { role: 'user', content: userMessage }
     ];
 
