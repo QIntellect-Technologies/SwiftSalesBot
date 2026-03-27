@@ -255,9 +255,7 @@ async function processIncomingMessage(from, text, metadata = {}) {
             }
         }
 
-        if (searchResults.length > 0) {
-            ragData = { query_type: 'product_context', retrieved_data: searchResults };
-        }
+        ragData = { query_type: 'search_results', retrieved_data: searchResults };
     }
 
     // AI Generation
