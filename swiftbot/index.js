@@ -7,6 +7,7 @@ require('dotenv').config();
 
 const {
     listCategories,
+    getProductsByCategory,
     searchMedicine,
     getMedicineById,
     createOrder,
@@ -29,21 +30,14 @@ app.use(cors());
 
 // Environment Validation
 const PROCESS_ID = Math.random().toString(36).substring(7).toUpperCase();
-const PROVIDER = process.env.WHATSAPP_PROVIDER || 'meta';
-let REQUIRED_ENV = ['GROQ_API_KEY', 'WHATSAPP_PROVIDER'];
-
-if (PROVIDER === 'wati') REQUIRED_ENV.push('WATI_API_ENDPOINT', 'WATI_API_TOKEN');
-else if (PROVIDER === 'whapi') REQUIRED_ENV.push('WHAPI_API_TOKEN');
-else REQUIRED_ENV.push('PHONE_NUMBER_ID', 'WHATSAPP_TOKEN');
-
+const REQUIRED_ENV = ['WHATSAPP_PROVIDER', 'WATI_API_ENDPOINT', 'WATI_API_TOKEN', 'GROQ_API_KEY'];
 console.error(`🔍 [PROCESS-START] ID: ${PROCESS_ID}`);
-console.error(`🔍 Provider detected: ${PROVIDER}`);
 console.error('🔍 Checking Environment Variables...');
 REQUIRED_ENV.forEach(key => {
     if (!process.env[key]) {
         console.error(`❌ MISSING ENV: ${key}`);
     } else {
-        console.error(`✅ FOUND ENV: ${key} (HIDDEN)`);
+        console.error(`✅ FOUND ENV: ${key} (${key === 'WHATSAPP_TOKEN' || key === 'GROQ_API_KEY' ? 'HIDDEN' : process.env[key]})`);
     }
 });
 

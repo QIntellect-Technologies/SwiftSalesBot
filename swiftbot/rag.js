@@ -306,7 +306,6 @@ module.exports = {
     listCompanies,
     getSubstitutions,
     getMultiProductContext,
-    getCategoriesByCompany,
     getProductsByCompanyAndCategory,
     getBroadContext,
     getDiscoveryContext
