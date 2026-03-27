@@ -47,10 +47,4 @@ function clearCart(userId) {
     updateSession(userId, { cart: [], cart_total: 0 });
 }
 
-function removeFromCart(userId, productId) {
-    const session = getSession(userId);
-    const updatedCart = session.cart.filter(item => item.product_id != productId);
-    updateSession(userId, { cart: updatedCart });
-}
-
-module.exports = { getSession, updateSession, addToHistory, clearCart, removeFromCart };
+module.exports = { getSession, updateSession, addToHistory, clearCart };

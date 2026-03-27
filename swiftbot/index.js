@@ -11,8 +11,6 @@ const {
     searchMedicine,
     getMedicineById,
     createOrder,
-    getOrdersByPhone,
-    updateOrderStatus,
     listCompanies,
     getSubstitutions,
     getMultiProductContext,
@@ -237,54 +235,29 @@ async function processIncomingMessage(from, text, metadata = {}) {
         const companies = await listCompanies();
         ragData = { query_type: 'discovery', retrieved_data: companies };
     }
-    // 2. Medicine List View — ALWAYS deliver CSV link immediately, no AI needed
-    else if (metadata.button_id === 'btn_medicine_list' || normalizedText === 'medicine list' || normalizedText === '💊 medicine list') {
-        const baseUrl = process.env.RAILWAY_STATIC_URL || 'swiftsalesbot-production.up.railway.app';
-        const csvUrl = `https://${baseUrl}/api/inventory/download`;
-        const reply = `📄 *Swift Sales — Complete Medicine List*\n\nBrowse our full inventory of medicines, prices, and stock below:\n\n🔗 ${csvUrl}\n\nOnce you've browsed, just type the medicine name and I'll handle the rest!\n\n◌${PROCESS_ID}`;
-        const listButtons = [
-            { id: 'btn_about', title: 'ℹ️ About Us' },
-            { id: 'btn_contact', title: '📞 Contact Agent' }
-        ];
-        await sendMessage(from, reply, listButtons);
-        addToHistory(from, 'user', text);
-        addToHistory(from, 'assistant', `📄 Medicine list CSV link sent: ${csvUrl}`);
-        return; // Short-circuit, don't go to AI
+    // 2. Medicine List View
+    else if (metadata.button_id === 'btn_medicine_list') {
+        Object.assign(session, updateSession(from, { current_step: 'medicine_list_view' }));
     }
-    // 3. Search (Enhanced for Multi-Product or Single Search) & Order Tracking
+    // 3. Search (Enhanced for Multi-Product or Single Search)
     else {
-        // --- ULTIMATE AGENT: ORDER STATUS LOOKUP ---
-        if (normalizedText.includes('order status') || normalizedText.includes('where is my order') || normalizedText.includes('track')) {
-            const orders = await getOrdersByPhone(from);
-            ragData = { query_type: 'order_history', retrieved_data: orders };
+        const separators = /[\,&\+]|\band\b/gi;
+        const potentialProducts = text.split(separators).map(p => p.trim()).filter(p => p.length > 2);
+        
+        let searchResults = [];
+        if (potentialProducts.length > 1) {
+            searchResults = await getMultiProductContext(potentialProducts);
         } else {
-            const separators = /[\,&\+]|\band\b/gi;
-            const potentialProducts = text.split(separators).map(p => p.trim()).filter(p => p.length > 2);
-            
-            let searchResults = [];
-            if (potentialProducts.length > 1) {
-                searchResults = await getMultiProductContext(potentialProducts);
-            } else {
-                searchResults = await searchMedicine(text);
-                // If out of stock, attach substitutions
-                if (searchResults.length === 1 && searchResults[0].stock_qty <= 0) {
-                    searchResults[0].substitutions = await getSubstitutions(searchResults[0].generic_name, searchResults[0].product_id);
-                }
-            }
-
-            if (searchResults.length > 0) {
-                ragData = { query_type: 'product_context', retrieved_data: searchResults };
+            searchResults = await searchMedicine(text);
+            // If out of stock, attach substitutions
+            if (searchResults.length === 1 && searchResults[0].stock_qty <= 0) {
+                searchResults[0].substitutions = await getSubstitutions(searchResults[0].generic_name, searchResults[0].product_id);
             }
         }
-    }
 
-    // --- ULTIMATE AGENT: LONG-TERM MEMORY INJECTION ---
-    const pastOrders = await getOrdersByPhone(from);
-    if (pastOrders.length > 0) {
-        ragData.customer_history = pastOrders.map(o => `Order ${o.order_number}: ${o.status} (${o.created_at})`).join(' | ');
-        // Auto-fill session if not set
-        if (!session.customer_name) session.customer_name = pastOrders[0].customer_name;
-        if (!session.delivery_address) session.delivery_address = pastOrders[0].delivery_address;
+        if (searchResults.length > 0) {
+            ragData = { query_type: 'product_context', retrieved_data: searchResults };
+        }
     }
 
     // AI Generation
@@ -309,11 +282,6 @@ async function processIncomingMessage(from, text, metadata = {}) {
             } else if (a.type === 'CLEAR_CART') {
                 clearCart(from);
                 cart = [];
-            } else if (a.type === 'REMOVE_FROM_CART') {
-                cart = cart.filter(item => item.product_id != a.product_id);
-                updateSession(from, { cart });
-            } else if (a.type === 'UPDATE_ORDER_STATUS') {
-                await updateOrderStatus(a.order_id || a.order_number, a.status);
             } else if (a.type === 'PLACE_ORDER') {
                 const totalAmount = cart.reduce((sum, item) => sum + item.subtotal, 0);
                 orderPlacedResult = await createOrder({
@@ -337,36 +305,22 @@ async function processIncomingMessage(from, text, metadata = {}) {
 
     let cleanReply = aiReply.replace(/(🏠|🏭|🛍️|🔍|📦|✅|❌|➕|🔙|ℹ️)\s*.*?(?=($|\n))/g, '').trim();
 
-    let buttons = aiSuggestedButtons.slice(0, 3).map(b => ({
-        id: b.id || 'btn_ai',
-        title: String(b.title).substring(0, 20)
+    let buttons = aiSuggestedButtons.slice(0, 3).map(b => ({ 
+        id: b.id || 'btn_ai', 
+        title: b.title.substring(0, 20) 
     }));
 
-    // Smart server-side fallback: if AI forgot buttons, provide smart defaults based on cart state
-    if (buttons.length === 0) {
-        const currentCart = session.cart || [];
-        if (session.current_step === 'order_placed') {
-            // Post-order: offer to reorder or track
-            buttons = [
-                { id: 'btn_medicine_list', title: '💊 Order Again' },
-                { id: 'btn_track', title: '📦 Track Order' }
-            ];
-        } else if (currentCart.length > 0) {
-            // Has items: most logical action is checkout or add more
-            buttons = [
-                { id: 'checkout', title: '✅ Checkout' },
-                { id: 'btn_medicine_list', title: '➕ Add More' },
-                { id: 'btn_home', title: '🏠 Home' }
-            ];
-        } else {
-            // New / empty cart: show discovery options
-            buttons = [
-                { id: 'btn_medicine_list', title: '💊 Medicine List' },
-                { id: 'btn_about', title: 'ℹ️ About Us' }
-            ];
-        }
-    }
+    if (session.current_step === 'medicine_list_view') {
+        cleanReply = "You can view our complete medicine inventory by downloading the CSV file below.";
+        const baseUrl = process.env.RAILWAY_STATIC_URL || 'swiftsalesbot-production.up.railway.app';
+        cleanReply += `\n\n📄 *Download Link:*\nhttps://${baseUrl}/api/inventory/download`;
+        buttons = [{ id: 'btn_back', title: '🔙 Back' }];
+        Object.assign(session, updateSession(from, { current_step: 'browsing' })); // Reset for next message
+    } 
 
+    if (buttons.length === 0) {
+        buttons = [{ id: 'btn_medicine_list', title: '💊 Medicine List' }, { id: 'btn_about', title: 'ℹ️ About Us' }];
+    }
 
     await sendMessage(from, `${cleanReply}\n\n◌${PROCESS_ID}`, buttons.slice(0, 3));
 }
