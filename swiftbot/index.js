@@ -15,7 +15,8 @@ const {
     getSubstitutions,
     getMultiProductContext,
     getCategoriesByCompany,
-    getProductsByCompanyAndCategory
+    getProductsByCompanyAndCategory,
+    getBroadContext
 } = require('./rag');
 const { generateAIResponse } = require('./groq');
 const { sendMessage } = require('./whatsapp');
