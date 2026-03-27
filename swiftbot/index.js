@@ -31,6 +31,14 @@ app.use(cors());
 
 // Serve Static Frontend (Vite Build)
 const distPath = path.join(__dirname, '../dist');
+
+// Specific fix for index.css MIME type error (prevents serving index.html as css)
+app.get('/index.css', (req, res, next) => {
+    if (fs.existsSync(path.join(distPath, 'index.css'))) return next();
+    res.setHeader('Content-Type', 'text/css');
+    res.send('/* Managed by SwiftBot */');
+});
+
 app.use(express.static(distPath));
 
 // Environment Validation
@@ -416,6 +424,11 @@ app.get('/api/admin/analytics/today', async (req, res) => {
 app.listen(PORT, '0.0.0.0', (err) => {
     if (err) return console.error('[CRITICAL-FAILURE] Port ' + PORT + ' in-use: ' + err.message);
     console.log('✅ [SERVER-READY] SQLite SwiftBot is LIVE on port ' + PORT);
+});
+
+// React Catch-all (Must be last)
+app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
 });
 
 setInterval(() => console.log(`[STATUS] Time: ${new Date().toLocaleTimeString()} | Port: ${PORT}`), 60000);
