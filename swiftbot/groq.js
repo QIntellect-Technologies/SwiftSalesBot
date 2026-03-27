@@ -21,18 +21,19 @@ async function generateAIResponse(userMessage, ragData, session) {
         };
     }
 
-    // Structured Context Injection
+    // Structured Context Injection (Rich Memory)
     const contextInjection = `
-RAG_CONTEXT: ${JSON.stringify(ragData, null, 2)}
-
 USER_SESSION: ${JSON.stringify({
         phone: session.userId,
-        current_step: session.current_step,
-        cart: session.cart,
+        customer_name: session.customer_name || 'New Customer',
+        delivery_address: session.delivery_address || 'Not Provided',
+        order_count: session.order_count || 0,
+        order_history: session.order_history || [],
+        current_cart: session.cart,
         cart_total: session.cart_total,
-        last_category: session.last_category,
-        last_page: session.last_page
     }, null, 2)}
+
+RAG_CONTEXT: ${JSON.stringify(ragData, null, 2)}
 `;
 
     const messages = [
@@ -43,7 +44,7 @@ Include a JSON array inside <ACTIONS> tags at the very end of your response.
 Example: <ACTIONS>[{"type": "ADD_TO_CART", "product_id": "...", "product_name": "...", "quantity": 4, "price": ...}]</ACTIONS>`
         },
         { role: 'system', content: contextInjection },
-        ...session.history.slice(-10),
+        ...session.history.slice(-20),
         { role: 'user', content: userMessage }
     ];
 

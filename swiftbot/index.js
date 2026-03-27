@@ -19,7 +19,7 @@ const {
 } = require('./rag');
 const { generateAIResponse } = require('./groq');
 const { sendMessage } = require('./whatsapp');
-const { getSession, updateSession, addToHistory, clearCart } = require('./memory');
+const { getSession, updateSession, addToHistory, addOrderToHistory, clearCart } = require('./memory');
 
 const app = express();
 app.use(bodyParser.json({ limit: '50mb' }));
@@ -284,17 +284,35 @@ async function processIncomingMessage(from, text, metadata = {}) {
                 cart = [];
             } else if (a.type === 'PLACE_ORDER') {
                 const totalAmount = cart.reduce((sum, item) => sum + item.subtotal, 0);
+                const customerName = a.customer_name || session.customer_name || 'Not Provided';
+                const customerPhone = a.customer_phone || from;
+                const deliveryAddress = a.delivery_address || session.delivery_address || 'Not Provided';
+
                 orderPlacedResult = await createOrder({
-                    customer_name: a.customer_name || 'Not Provided',
-                    customer_phone: a.customer_phone || from,
+                    customer_name: customerName,
+                    customer_phone: customerPhone,
                     items: cart,
                     total_amount: totalAmount,
-                    delivery_address: a.delivery_address || 'Not Provided',
+                    delivery_address: deliveryAddress,
                     pharmacy_id: '048c8e94-10f2-4dff-ae9d-1eca2a746b46'
                 });
+
+                if (orderPlacedResult) {
+                    addOrderToHistory(from, {
+                        order_id: orderPlacedResult.order_number,
+                        items: cart,
+                        total: totalAmount,
+                        address: deliveryAddress
+                    });
+                    updateSession(from, { 
+                        customer_name: customerName, 
+                        delivery_address: deliveryAddress,
+                        current_step: 'order_placed'
+                    });
+                }
+                
                 clearCart(from);
                 cart = [];
-                Object.assign(session, updateSession(from, { current_step: 'order_placed' }));
             }
         }
         updateSession(from, { cart });
@@ -322,7 +340,7 @@ async function processIncomingMessage(from, text, metadata = {}) {
         buttons = [{ id: 'btn_medicine_list', title: '💊 Medicine List' }, { id: 'btn_about', title: 'ℹ️ About Us' }];
     }
 
-    await sendMessage(from, `${cleanReply}\n\n◌${PROCESS_ID}`, buttons.slice(0, 3));
+    await sendMessage(from, cleanReply, buttons.slice(0, 3));
 }
 
 // --- ADMIN API ROUTES ---
