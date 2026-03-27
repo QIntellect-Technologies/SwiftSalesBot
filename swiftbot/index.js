@@ -427,8 +427,12 @@ app.listen(PORT, '0.0.0.0', (err) => {
 });
 
 // React Catch-all (Must be last)
-app.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
+app.use((req, res, next) => {
+    if (req.method === 'GET' && req.accepts('html')) {
+        res.sendFile(path.join(distPath, 'index.html'));
+    } else {
+        next();
+    }
 });
 
 setInterval(() => console.log(`[STATUS] Time: ${new Date().toLocaleTimeString()} | Port: ${PORT}`), 60000);
