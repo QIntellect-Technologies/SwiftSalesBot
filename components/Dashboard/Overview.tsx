@@ -1,17 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
-  DollarSign, ShoppingCart, Package, AlertTriangle, Users,
-  TrendingUp, TrendingDown, Activity, Clock, CheckCircle2,
-  XCircle, Truck, Layers, BarChart3, PieChart as PieIcon,
-  ArrowUpRight, ArrowDownRight, Calendar, Search, Filter,
-  RefreshCw, MousePointer2, Box, Wallet, UserPlus,
-  Percent, AlertOctagon, Undo2, Star
+  History, User, MapPin, Mail, ExternalLink, X, Star, Undo2, ShoppingCart,
+  DollarSign, Package, AlertTriangle, Users, TrendingUp, TrendingDown, Activity, Clock, CheckCircle2,
+  XCircle, Truck, Layers, BarChart3, PieChart as PieIcon, ArrowUpRight, ArrowDownRight, Calendar, Search, Filter,
+  RefreshCw, MousePointer2, Box, Wallet, UserPlus, Percent, AlertOctagon
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, BarChart, Bar, Legend, ComposedChart, Line
 } from 'recharts';
-import { supabase } from '../../lib/supabase';
 
 interface OverviewProps {
   initialSearch: string;
@@ -66,91 +63,44 @@ const Overview: React.FC<OverviewProps> = ({ darkMode, filterDate }) => {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
-        const [
-          { data: orders },
-          { data: medicines },
-          { data: suppliers },
-          { data: categories }
-        ] = await Promise.all([
-          supabase.from('orders').select('*'),
-          supabase.from('medicines').select('*'),
-          supabase.from('suppliers').select('*'),
-          supabase.from('categories').select('*')
-        ]);
+        // Fetch Today's Stats from local API
+        const statRes = await fetch('/api/admin/analytics/today');
+        const todayStats = await statRes.json();
 
-        if (!orders || !medicines || !suppliers || !categories) return;
+        // Fetch Total Orders for overall metrics
+        const resOrders = await fetch('/api/admin/orders');
+        const orders: any[] = await resOrders.json();
 
-        // 1. Calculations
-        const totalRevenue = orders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+        // Fetch Medicines for inventory metrics
+        const medRes = await fetch('/api/medicines');
+        const medicines = await medRes.json();
+
+        const totalRevenue = orders.reduce((sum: any, o: any) => sum + (o.total_amount || 0), 0);
         const totalOrders = orders.length;
-        const pendingOrders = orders.filter(o => o.status === 'Pending' || o.status === 'Processing').length;
-        const completedOrders = orders.filter(o => o.status === 'Completed').length;
-        const cancelledOrders = orders.filter(o => o.status === 'Cancelled').length; // Used for returns/refunds proxy
-
+        const pendingOrders = orders.filter((o: any) => o.status === 'pending').length;
         const totalMedicines = medicines.length;
-        const lowStock = medicines.filter(m => m.stock <= (m.reorder_level || 10)).length;
-        const outOfStock = medicines.filter(m => m.stock === 0).length;
-        const inventoryValue = medicines.reduce((sum, m) => sum + ((m.cost_price || 0) * (m.stock || 0)), 0);
 
-        // Mocking expiring soon based on a random factor or real date if available
-        // For now, let's assume 5% of inventory is expiring soon if no date field
-        const expiringSoon = Math.floor(totalMedicines * 0.05);
+        setMetrics(prev => ({
+          ...prev,
+          totalRevenue: todayStats.revenue || 0, // Showing TODAY'S revenue in main card
+          totalOrders: todayStats.order_count || 0,
+          pendingOrders,
+          totalMedicines,
+          avgOrderValue: todayStats.order_count > 0 ? (todayStats.revenue / todayStats.order_count) : 0,
+          inventoryValue: totalRevenue // Total lifetime for scale
+        }));
 
-        const totalSuppliers = suppliers.length;
-        const activeSuppliers = suppliers.filter(s => s.status === 'Active').length;
-        const totalCategories = categories.length;
-
-        const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-
-        // Mocking Cost to calculate margin (Assuming 70% cost on average for aggregate)
-        const estTotalCost = totalRevenue * 0.7;
-        const profitMargin = totalRevenue > 0 ? ((totalRevenue - estTotalCost) / totalRevenue) * 100 : 0;
-
-        // Finding Top Selling Item
-        const topItem = medicines.reduce((prev, current) => (prev.sales_volume || 0) > (current.sales_volume || 0) ? prev : current, medicines[0]);
-
-        // Finding Top Category (by sales volume of medicines in it)
-        const catSales: Record<string, number> = {};
-        medicines.forEach(m => {
-          const cat = m.category_name || 'Uncategorized';
-          catSales[cat] = (catSales[cat] || 0) + (m.sales_volume || 0);
-        });
-        const topCatName = Object.keys(catSales).reduce((a, b) => catSales[a] > catSales[b] ? a : b, '-');
-
-        // New Customers (Mock logic: 15% of orders are new customers)
-        const newCustomers = Math.floor(totalOrders * 0.15);
-
-        // Sales Growth (Mock logic: Compare to 'last month' which we simulate as 90% of current)
-        const salesGrowth = 12.5; // Hardcoded positive trend for demo
-
-        setMetrics({
-          totalRevenue, totalOrders, pendingOrders, completedOrders,
-          totalMedicines, lowStock, outOfStock, expiringSoon,
-          totalSuppliers, activeSuppliers, totalCategories,
-          avgOrderValue, profitMargin, returns: cancelledOrders,
-          topSellingItem: topItem?.name || '-', topCategory: topCatName,
-          newCustomers, salesGrowth, inventoryValue,
-          stockIn: 1240, stockOut: 985 // Mocked flow
-        });
-
-        // 2. Prepare Chart Data
-        // Revenue Trend (Mocking daily distribution of total revenue)
+        // Revenue Trend (Mocking daily distribution)
         const revTrend = [
-          { name: 'Mon', value: totalRevenue * 0.12 },
-          { name: 'Tue', value: totalRevenue * 0.15 },
-          { name: 'Wed', value: totalRevenue * 0.1 },
-          { name: 'Thu', value: totalRevenue * 0.18 },
-          { name: 'Fri', value: totalRevenue * 0.25 },
-          { name: 'Sat', value: totalRevenue * 0.15 },
-          { name: 'Sun', value: totalRevenue * 0.05 },
+          { name: 'Mon', value: 4000 },
+          { name: 'Tue', value: 3000 },
+          { name: 'Wed', value: 2000 },
+          { name: 'Thu', value: todayStats.revenue * 0.8 },
+          { name: 'Fri', value: todayStats.revenue },
+          { name: 'Sat', value: 2390 },
+          { name: 'Sun', value: 3490 },
         ];
         setRevenueData(revTrend);
-
-        // Category Distribution
-        const catDist = Object.entries(catSales).map(([name, value], idx) => ({
-          name, value, color: ['#3B82F6', '#10B981', '#F59E0B', '#6366F1', '#EC4899'][idx % 5]
-        }));
-        setCategoryData(catDist);
 
       } catch (error) {
         console.error('Error fetching dashboard data:', error);

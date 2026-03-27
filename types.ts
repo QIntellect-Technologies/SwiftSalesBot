@@ -97,7 +97,8 @@ export interface UserSession {
 export interface Order {
   id: string;
   customerName: string;
-  customerType: 'Retail' | 'Wholesale' | 'Hospital' | 'Clinic';
+  customerPhone?: string;
+  customerType: 'Retail' | 'Wholesale' | 'Hospital' | 'Clinic' | 'WhatsApp';
   date: string;
   amount: number;
   status: 'Completed' | 'Pending' | 'Cancelled' | 'Processing';
@@ -165,6 +166,7 @@ export enum DashboardView {
   INVENTORY = 'Medicines Inventory',
   UPLOAD = 'Upload Data',
   ORDERS = 'Orders Management',
+  CUSTOMERS = 'Customers & History',
   ANALYTICS = 'Analytics Reports',
   SUPPLIERS = 'Suppliers Directory',
   CATEGORIES = 'Categories Management',

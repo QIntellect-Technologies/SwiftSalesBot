@@ -11,6 +11,7 @@ import AnalyticsReports from './components/Analytics/AnalyticsReports';
 import SuppliersDirectory from './components/Suppliers/SuppliersDirectory';
 import CategoriesManagement from './components/Categories/CategoriesManagement';
 import UserSettings from './components/Settings/UserSettings';
+import CustomersManagement from './components/Customers/CustomersManagement';
 import { DashboardView } from './types';
 
 const App: React.FC = () => {
@@ -63,6 +64,8 @@ const App: React.FC = () => {
         return <ExcelUpload />;
       case DashboardView.ORDERS:
         return <OrdersManagement initialSearch={globalSearch} />;
+      case DashboardView.CUSTOMERS:
+        return <CustomersManagement initialSearch={globalSearch} />;
       case DashboardView.ANALYTICS:
         return <AnalyticsReports />;
       case DashboardView.SUPPLIERS:

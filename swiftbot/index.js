@@ -23,10 +23,15 @@ const { generateAIResponse } = require('./groq');
 const { sendMessage } = require('./whatsapp');
 const { getSession, updateSession, addToHistory, addOrderToHistory, clearCart } = require('./memory');
 
+const path = require('path');
 const app = express();
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 app.use(cors());
+
+// Serve Static Frontend (Vite Build)
+const distPath = path.join(__dirname, '../dist');
+app.use(express.static(distPath));
 
 // Environment Validation
 const PROCESS_ID = Math.random().toString(36).substring(7).toUpperCase();
@@ -363,6 +368,49 @@ app.get('/api/inventory/download', async (req, res) => {
         res.setHeader('Content-Disposition', 'attachment; filename=Inventory_Master.csv');
         res.status(200).send(csv);
     } catch (err) { res.status(500).send('Internal Server Error'); }
+});
+
+// --- NEW ADMIN ANALYTICS ENDPOINTS (PHASE 7) ---
+app.get('/api/admin/orders', async (req, res) => {
+    try {
+        const rows = await db.all(`SELECT * FROM orders ORDER BY created_at DESC`);
+        // Parse the items JSON for the frontend
+        const parsed = rows.map(r => ({ ...r, items: JSON.parse(r.items || '[]') }));
+        res.json(parsed);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/admin/customers', async (req, res) => {
+    try {
+        const rows = await db.all(`
+            SELECT 
+                customer_phone, 
+                MAX(customer_name) as customer_name,
+                COUNT(*) as total_orders,
+                SUM(total_amount) as total_spent,
+                MAX(created_at) as last_order_date
+            FROM orders 
+            GROUP BY customer_phone 
+            ORDER BY last_order_date DESC
+        `);
+        res.json(rows);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/admin/analytics/today', async (req, res) => {
+    try {
+        const stats = await db.get(`
+            SELECT 
+                COUNT(*) as order_count,
+                SUM(total_amount) as revenue
+            FROM orders 
+            WHERE date(created_at) = date('now')
+        `);
+        res.json({
+            order_count: stats?.order_count || 0,
+            revenue: stats?.revenue || 0
+        });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.listen(PORT, '0.0.0.0', (err) => {

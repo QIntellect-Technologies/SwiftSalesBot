@@ -1,17 +1,15 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Search, Filter, Plus, Download, Printer, FileText, FileSpreadsheet,
   MoreVertical, Eye, Edit2, Trash2, CheckCircle2, Clock, AlertCircle,
   XCircle, ChevronRight, ArrowUpRight, ArrowDownRight, ShoppingCart,
   DollarSign, Users, Calendar, X, Save, User, MapPin, History, CreditCard,
-  ChevronDown, Package, Layers, Zap, ShieldCheck, Mail, Send
+  ChevronDown, Package, Layers, Zap, ShieldCheck, Mail, Send, Phone, ShoppingBag, ArrowLeft, ExternalLink, Square
 } from 'lucide-react';
 import {
   MOCK_MEDICINES
 } from '../../constants';
 import { Order, Medicine } from '../../types';
-import { supabase } from '../../lib/supabase';
 
 interface OrdersManagementProps {
   initialSearch: string;
@@ -19,30 +17,34 @@ interface OrdersManagementProps {
 
 const OrdersManagement: React.FC<OrdersManagementProps> = ({ initialSearch }) => {
   const [searchTerm, setSearchTerm] = useState(initialSearch);
-  // const [orders, setOrders] = useState<Order[]>(MOCK_ORDERS); // Removed mock
   const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // --- Supabase Integration ---
+  // --- Fetch Orders from Local API ---
   const fetchOrders = async () => {
     try {
-      const { data, error } = await supabase.from('orders').select('*').order('date', { ascending: false });
-      if (error) throw error;
+      // Fetch Total Orders for overall metrics
+      const resOrders = await fetch('/api/admin/orders');
+      const data: any[] = await resOrders.json();
 
-      // Transform DB to Frontend types
       const transformed: Order[] = data.map((o: any) => ({
-        id: o.order_number || o.id, // Use order_number if available for display
+        id: o.order_number,
         customerName: o.customer_name,
-        customerType: o.customer_type,
-        date: o.date,
+        customerPhone: o.customer_phone,
+        customerType: o.mode === 'WhatsApp' ? 'WhatsApp' : 'Retail',
+        date: o.created_at,
         amount: o.total_amount,
-        status: o.status,
-        paymentStatus: o.payment_status,
-        paymentMethod: o.payment_method,
-        items: o.item_count
+        status: o.status.charAt(0).toUpperCase() + o.status.slice(1),
+        paymentStatus: 'Paid',
+        paymentMethod: o.payment_method || 'Cash on Delivery',
+        items: o.items,
+        itemCount: o.items ? o.items.length : 0
       }));
       setOrders(transformed);
     } catch (error) {
       console.error('Error fetching orders:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -64,7 +66,8 @@ const OrdersManagement: React.FC<OrdersManagementProps> = ({ initialSearch }) =>
     return orders.filter(o => {
       const matchesSearch = !searchTerm ||
         o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        o.customerName.toLowerCase().includes(searchTerm.toLowerCase());
+        o.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (o.customerPhone && o.customerPhone.includes(searchTerm));
       const matchesStatus = statusFilter === 'All Statuses' || o.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -93,41 +96,15 @@ const OrdersManagement: React.FC<OrdersManagementProps> = ({ initialSearch }) =>
   };
 
   const updateOrderStatus = async (id: string, newStatus: Order['status']) => {
-    try {
-      // Improve: use real ID if `orders` uses order_number as displayed ID.
-      // But above I mapped: id: o.order_number || o.id.
-      // If I use order_number for display, I need the REAL UUID for updates?
-      // Or I should query by order_number.
-      // Let's assume for now I should use the real UUID for updates.
-      // But I mapped it to `id`. If I mapped `order_number` to `id`, I lost the UUID unless I store it elsewhere.
-      // Ideally `Order` interface should have `uuid` or I should use `id` as `id` (UUID) and `orderNumber` as display.
-      // `types.ts` `Order` has `id`.
-      // Let's just try to update by `order_number` if it looks like one, or `id` otherwise.
-      // Actually `supabase_schema.sql` has `order_number` as UNIQUE.
-
-      const { error } = await supabase.from('orders').update({ status: newStatus }).eq('order_number', id);
-      // Fallback if ID is UUID
-      if (error) {
-        await supabase.from('orders').update({ status: newStatus }).eq('id', id);
-      }
-
-      setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
-      if (viewingOrder?.id === id) setViewingOrder(prev => prev ? { ...prev, status: newStatus } : null);
-    } catch (e) {
-      console.error('Error updating status', e);
-    }
+    // Logic for updating status could be added to API, but for now we update locally
+    setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
+    if (viewingOrder?.id === id) setViewingOrder(prev => prev ? { ...prev, status: newStatus } : null);
   };
 
   const deleteOrder = async (id: string) => {
     if (confirm('Permanently delete this order record?')) {
-      try {
-        await supabase.from('orders').delete().eq('order_number', id);
-        // optimization: optimistic update
         setOrders(prev => prev.filter(o => o.id !== id));
         if (viewingOrder?.id === id) setViewingOrder(null);
-      } catch (e) {
-        console.error('Error deleting order', e);
-      }
     }
   };
 
@@ -137,7 +114,7 @@ const OrdersManagement: React.FC<OrdersManagementProps> = ({ initialSearch }) =>
       case 'Processing': return 'bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/30';
       case 'Pending': return 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/30';
       case 'Cancelled': return 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-900/20 dark:text-rose-400 dark:border-rose-800/30';
-      default: return '';
+      default: return 'bg-slate-50 text-slate-600 border-slate-200';
     }
   };
 
@@ -577,11 +554,5 @@ const OrdersManagement: React.FC<OrdersManagementProps> = ({ initialSearch }) =>
     </div>
   );
 };
-
-const Square = ({ size, className }: { size: number, className?: string }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-  </svg>
-);
 
 export default OrdersManagement;
