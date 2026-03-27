@@ -272,6 +272,32 @@ async function getBroadContext(message) {
     }
 }
 
+async function getDiscoveryContext() {
+    try {
+        const rows = await db.all(`
+            SELECT m.*, COALESCE(c.name, m.generic_name, 'General') as category_name 
+            FROM medicines m 
+            LEFT JOIN categories c ON m.category_id = c.id
+            ORDER BY RANDOM()
+            LIMIT 15
+        `);
+        return rows.map(med => ({
+            product_id: med.id,
+            name: med.name,
+            generic_name: med.generic_name || '',
+            category: med.category_name || 'Medicines',
+            manufacturer: med.manufacturer || 'Swift Sales',
+            pack_size: med.package_size || 'Unit',
+            price_unit: med.price || 0,
+            stock_qty: med.stock || 0,
+            stock_status: med.stock > 0 ? 'Available' : 'Out of Stock'
+        }));
+    } catch (error) {
+        console.error('Error fetching discovery context:', error.message);
+        return [];
+    }
+}
+
 module.exports = {
     listCategories,
     searchMedicine,
@@ -280,7 +306,7 @@ module.exports = {
     listCompanies,
     getSubstitutions,
     getMultiProductContext,
-    getCategoriesByCompany,
     getProductsByCompanyAndCategory,
-    getBroadContext
+    getBroadContext,
+    getDiscoveryContext
 };

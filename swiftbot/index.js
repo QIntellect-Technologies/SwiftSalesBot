@@ -16,7 +16,8 @@ const {
     getMultiProductContext,
     getCategoriesByCompany,
     getProductsByCompanyAndCategory,
-    getBroadContext
+    getBroadContext,
+    getDiscoveryContext
 } = require('./rag');
 const { generateAIResponse } = require('./groq');
 const { sendMessage } = require('./whatsapp');
@@ -229,8 +230,16 @@ async function processIncomingMessage(from, text, metadata = {}) {
     const normalizedText = (text || "").toLowerCase().trim();
 
     // --- PURE AGENT DISCOVERY LOGIC (NO HARDCODING) ---
-    const searchResults = await getBroadContext(text);
-    ragData = { query_type: 'search_results', retrieved_data: searchResults };
+    let searchResults = await getBroadContext(text);
+    let type = 'search_results';
+
+    if (searchResults.length === 0) {
+        // If search returned nothing, provide a discovery sample so the AI knows we have products
+        searchResults = await getDiscoveryContext();
+        type = 'discovery_context';
+    }
+
+    ragData = { query_type: type, retrieved_data: searchResults };
 
     // AI Generation
     let aiPrompt = text;
