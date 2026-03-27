@@ -3,7 +3,7 @@
  * Replaces all Supabase client calls in the admin panel.
  */
 
-const BASE_URL = 'http://localhost:3005';
+const BASE_URL = 'http://localhost:3000';
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {

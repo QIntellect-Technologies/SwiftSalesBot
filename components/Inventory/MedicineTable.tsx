@@ -40,7 +40,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis } from 'recharts';
 import { Medicine } from '../../types';
 import { MOCK_MEDICINES } from '../../constants';
 
-const API = 'http://localhost:3005';
+const API = 'http://localhost:3000';
 async function apiFetch(path: string, options: RequestInit = {}) {
   const res = await fetch(API + path, { headers: { 'Content-Type': 'application/json' }, ...options });
   if (!res.ok) throw new Error(`API error: ${res.status}`);
