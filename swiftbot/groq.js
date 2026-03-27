@@ -34,10 +34,16 @@ USER_SESSION: ${JSON.stringify({
     }, null, 2)}
 
 RAG_CONTEXT: ${JSON.stringify(ragData, null, 2)}
+
+--- TRUTH BOUNDARY ---
+IMPORTANT: Previous messages in history may contain errors or hallucinations (e.g., mentioning Panadol). 
+ONLY the RAG_CONTEXT above is accurate. 
+If a product is NOT in the RAG_CONTEXT, it DOES NOT exist. Correct previous mistakes immediately.
 `;
 
     // Clean history of any metadata that might confuse the Pure Agent
-    const cleanHistory = session.history.slice(-20).map(h => ({
+    // DEEP MEMORY PURGE (v9.6): Only keep last 6 messages (3 turns)
+    const cleanHistory = session.history.slice(-6).map(h => ({
         role: h.role,
         content: h.content.replace(/<(ACTIONS|actions)>.*?<\/(ACTIONS|actions)>/si, '').trim()
     }));
